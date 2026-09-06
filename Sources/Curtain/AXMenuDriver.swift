@@ -124,29 +124,23 @@ enum AXMenuDriver {
         return AXUIElementPerformAction(item, kAXPressAction as CFString) == .success
     }
 
-    /// True while the app has a menu open under one of its status items, or a
-    /// real window up (a popover counts; the 1×1 placeholder some apps keep
-    /// does not). How Curtain knows an "open" actually opened something, and
-    /// when the user has finished with it.
+    /// True while the app has something on screen: a menu, a popover, a window.
+    ///
+    /// Read from the window server, not the accessibility tree. BetterDisplay
+    /// keeps the element that hosted its menu — children and all — for ten
+    /// seconds or more after the menu has visibly closed, so an AX-based check
+    /// left the bar revealed long after the user was done. The on-screen window
+    /// list empties the instant the menu goes. Tiny placeholder windows (some
+    /// apps keep a 1×1) are ignored.
     static func isPresenting(pid: pid_t) -> Bool {
-        let app = AXUIElementCreateApplication(pid)
-        AXUIElementSetMessagingTimeout(app, 0.5)
-        if let bar = element(app, "AXExtrasMenuBar"),
-           children(of: bar).contains(where: { !children(of: $0).isEmpty }) {
-            return true
-        }
-        var value: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(app, kAXWindowsAttribute as CFString, &value) == .success,
-              let windows = value as? [AXUIElement]
-        else { return false }
-        return windows.contains { window in
-            var sizeValue: CFTypeRef?
-            guard AXUIElementCopyAttributeValue(window, kAXSizeAttribute as CFString, &sizeValue) == .success,
-                  let sizeValue, CFGetTypeID(sizeValue) == AXValueGetTypeID()
+        let options: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
+        guard let list = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: Any]] else { return false }
+        return list.contains { window in
+            guard (window[kCGWindowOwnerPID as String] as? Int32) == pid,
+                  let bounds = window[kCGWindowBounds as String] as? [String: CGFloat],
+                  let width = bounds["Width"], let height = bounds["Height"]
             else { return false }
-            var size = CGSize.zero
-            AXValueGetValue(sizeValue as! AXValue, .cgSize, &size)
-            return size.width > 40 && size.height > 40
+            return width > 20 && height > 20
         }
     }
 
