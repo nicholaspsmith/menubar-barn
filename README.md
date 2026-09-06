@@ -8,6 +8,8 @@
   Click the chevron to get them back — with their real menus, without moving a thing.
 </p>
 
+<p align="center"><img src="docs/mascot.png" width="160" alt="Curtain mascot, from the Menubarn widget library"></p>
+
 <p align="center">
   <img src="docs/images/panel.png" width="260" alt="The panel, listing hidden apps with their menus">
 </p>
