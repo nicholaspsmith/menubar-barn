@@ -294,26 +294,53 @@ final class App: NSObject, NSApplicationDelegate {
             return
         }
         let wasHidden = isHidden
+        // Our chevron is not needed until the programmatic re-hide, so it gives
+        // up its width like the yielding siblings do. Those 30pt are what decide
+        // whether the far end of a wide hidden block clears the notch (measured
+        // 2026-09-06: BetterDisplay revealed at x=828, eleven points short).
+        controller.setVisible(false)
         if isHidden { toggle() }
 
-        // Long enough for the reveal to settle so positions can be trusted, short
-        // enough that the shuffle is a blink rather than a performance. Both
-        // waits were originally padded while the reflow was still unfamiliar.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { [weak self] in
+        // Wait for the reveal to settle before trusting any position. Siblings
+        // yield over a distributed notification that lands a few hundred
+        // milliseconds later, and a drag started while the bar is still reflowing
+        // grabs one thing and drops another. "Settled" is two consecutive reads
+        // that agree; a cap keeps a wedged app from stalling the arrange.
+        afterBarSettles { [weak self] in
             guard let self else { return }
             defer {
                 if wasHidden, !self.isHidden {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { self.toggle() }
                 }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { self.controller.setVisible(true) }
             }
 
             let ownPID = ProcessInfo.processInfo.processIdentifier
+            let geometry = MenuBarGeometry.current()
             let items = AXMenuBar.items()
             let ours = items.filter { $0.pid == ownPID }
-            guard let lineX = ours.map(\.frame.minX).min(),
-                  let handleX = ours.map(\.frame.maxX).max(),
-                  let target = items.first(where: { $0.pid == app.pid })
+            // Restoring: the app's item nearest the line is the one most likely to
+            // be drawable. Hiding: the leftmost on-screen one, for the same reason.
+            let candidates = items.filter { $0.pid == app.pid }
+            guard let lineX0 = ours.map(\.frame.minX).min(),
+                  let handleX0 = ours.map(\.frame.maxX).max(),
+                  let target0 = app.isHidden
+                    ? candidates.max(by: { $0.frame.minX < $1.frame.minX })
+                    : candidates.filter({ $0.frame.minX > 0 }).min(by: { $0.frame.minX < $1.frame.minX })
+                        ?? candidates.first
             else { return }
+
+            let target = target0
+            let lineX = lineX0
+            let handleX = handleX0
+            if app.isHidden, CurtainGeometry.placement(of: target.frame, in: geometry) != .visible {
+                let firstDrawable = geometry.usableMinX + geometry.deadZoneMargin
+                self.report(
+                    .underNotch(name: app.name, at: target.frame.minX, over: firstDrawable - target.frame.minX),
+                    for: app.name
+                )
+                return
+            }
 
             let dropX: CGFloat
             if app.isHidden {
@@ -323,7 +350,7 @@ final class App: NSObject, NSApplicationDelegate {
                 dropX = lineX - 25
             }
 
-            let result = Arranger.move(target, toX: dropX, in: MenuBarGeometry.current())
+            let result = Arranger.move(target, toX: dropX, in: geometry)
             switch result {
             case .success:
                 // Only once it is actually back does the remembered spot stop
@@ -335,6 +362,33 @@ final class App: NSObject, NSApplicationDelegate {
             case .failure(let failure):
                 self.report(failure, for: app.name)
             }
+        }
+    }
+
+    /// Run `work` once two consecutive reads of the bar (100ms apart) agree, or
+    /// after `cap` seconds regardless.
+    private func afterBarSettles(cap: TimeInterval = 2.0, _ work: @escaping () -> Void) {
+        let deadline = Date().addingTimeInterval(cap)
+        func snapshot() -> [String] {
+            AXMenuBar.items().map { "\($0.pid):\(Int($0.frame.minX)):\(Int($0.frame.width))" }.sorted()
+        }
+        var previous: [String] = []
+        func check() {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                let current = snapshot()
+                if current == previous || Date() >= deadline {
+                    work()
+                } else {
+                    previous = current
+                    check()
+                }
+            }
+        }
+        // Give the reveal and the yield notifications a head start; agreement
+        // between two reads taken before anything has moved proves nothing.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            previous = snapshot()
+            check()
         }
     }
 
@@ -460,6 +514,11 @@ final class App: NSObject, NSApplicationDelegate {
         case .didNotLand(_, let at):
             alert.informativeText = "The drag ran but the icon settled at x=\(Int(at)). "
                 + "Drag it across the chevron by hand with ⌘ held."
+        case .underNotch(_, let at, let over):
+            alert.informativeText = "With the icons revealed, \(name)'s icon sits at x=\(Int(at)), "
+                + "\(Int(over.rounded(.up))) pt inside the notch, where nothing can grab it. "
+                + "Too many icons are hidden for the bar to reveal them all at once: "
+                + "show one of the icons nearer the chevron first, or hide fewer."
         }
         alert.alertStyle = .warning
         NSApp.activate(ignoringOtherApps: true)

@@ -99,6 +99,15 @@ item, so each needs a restart to pick them up.
   macOS reflows the bar unexpectedly and the chevron is stranded anyway, Curtain
   notices within a second and offers to hide the icon again. It still cannot
   create room.
+- **A very wide hidden block cannot all be revealed at once.** Showing an icon
+  means revealing the block and dragging that icon across the line, and the
+  block's far end can spill under the notch if more is hidden than the bar can
+  display. During the move Curtain's own chevron and every StatusItemKit app
+  that runs a `YieldClient` give up their width, which is usually enough; if
+  the icon still sits under the notch, Curtain says so rather than dragging
+  blind. Moving other hidden icons across the line does not help — the total
+  width left of the chevron is unchanged — so the cure is fewer or narrower
+  icons on the bar, or more apps that yield.
 - **Some apps are invisible to accessibility.** Mullvad and Raycast publish no
   status item at all, so they can be hidden but not listed or arranged for.
 - **Shortcuts depend on the app.** Rows show key equivalents where an app sets

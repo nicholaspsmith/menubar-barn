@@ -17,6 +17,9 @@ enum Arranger {
         case unreachable(name: String)
         /// The drag ran but the icon is not where it was asked to go.
         case didNotLand(name: String, at: CGFloat)
+        /// Revealed, but sitting under the notch: the hidden block is wider than
+        /// the bar can show at once, so this icon has no point a cursor can grab.
+        case underNotch(name: String, at: CGFloat, over: CGFloat)
     }
 
     /// Vertical centre of the menu bar in the top-left space `CGEvent` uses.
@@ -29,13 +32,38 @@ enum Arranger {
         toX targetX: CGFloat,
         in geometry: MenuBarGeometry
     ) -> Result<ItemFrame, Failure> {
+        let first = attempt(item, toX: targetX, in: geometry)
+        guard case .failure(.didNotLand) = first else { return first }
+        // A drag can miss when the bar is still reflowing under the cursor — a
+        // sibling's yield landing late, an app adding an item as its icon comes
+        // on screen (BetterDisplay does). One more try after it settles is cheap
+        // and, measured, usually enough.
+        Thread.sleep(forTimeInterval: 0.4)
+        guard let fresh = AXMenuBar.items()
+            .filter({ $0.pid == item.pid && abs($0.frame.width - item.frame.width) < 2 })
+            .min(by: { abs($0.frame.minX - item.frame.minX) < abs($1.frame.minX - item.frame.minX) })
+        else { return first }
+        return attempt(fresh, toX: targetX, in: geometry)
+    }
+
+    private static func attempt(
+        _ item: MenuBarItem,
+        toX targetX: CGFloat,
+        in geometry: MenuBarGeometry
+    ) -> Result<ItemFrame, Failure> {
         guard item.frame.minX > 0 else { return .failure(.unreachable(name: item.name)) }
 
         drag(fromX: item.frame.minX + item.frame.width / 2, toX: targetX)
         // Give the bar a moment to settle before believing anything.
         Thread.sleep(forTimeInterval: 0.25)
 
-        guard let landed = AXMenuBar.items().first(where: { $0.pid == item.pid })?.frame else {
+        // An app can own several items (BetterDisplay does); judge the one that
+        // ended up nearest the target, not whichever the API lists first.
+        guard let landed = AXMenuBar.items()
+            .filter({ $0.pid == item.pid })
+            .map(\.frame)
+            .min(by: { abs($0.minX - targetX) < abs($1.minX - targetX) })
+        else {
             return .failure(.didNotLand(name: item.name, at: item.frame.minX))
         }
         // Landing within a slot's width of the target is success; the bar snaps

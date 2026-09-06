@@ -96,7 +96,26 @@ enum AXMenuBar {
         noBarUntil = noBarUntil.filter { alive.contains($0.key) }
         lock.unlock()
 
-        return perApp.flatMap { $0 }
+        return dropPhantoms(perApp.flatMap { $0 })
+    }
+
+    /// Remove items that cannot really be on the bar: a slot that overlaps
+    /// another app's slot is not laid out, whatever the API says. BetterDisplay
+    /// briefly publishes a 310pt item on top of half the bar whenever its icon
+    /// comes on screen; taking that frame at face value made a restore "land"
+    /// on it and hid the real icon's failure. Our own line overlaps the hidden
+    /// block by design and is left alone.
+    static func dropPhantoms(_ items: [MenuBarItem]) -> [MenuBarItem] {
+        let ownPID = ProcessInfo.processInfo.processIdentifier
+        return items.filter { item in
+            guard item.pid != ownPID else { return true }
+            return !items.contains { other in
+                other.pid != item.pid && other.pid != ownPID
+                    && other.frame.width < item.frame.width
+                    && other.frame.minX >= item.frame.minX + 2
+                    && other.frame.maxX <= item.frame.maxX - 2
+            }
+        }
     }
 
     // MARK: - AX plumbing
