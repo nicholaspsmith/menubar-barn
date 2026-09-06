@@ -105,6 +105,10 @@ behind every constant — why a status item must fit entirely right of the notch
 render at all, why an app cannot trust its own item's window frame, and why
 yielding by width rather than `isVisible` is the only way to keep a placement.
 
+## Why not a SwiftBar plugin?
+
+This is a standalone `.app` built on [StatusItemKit](https://github.com/nicholaspsmith/StatusItemKit), not a script under a plugin host: no SwiftBar to install, a real AppKit menu instead of rendered stdout, event-driven updates instead of a re-run timer, and an icon that keeps its place in the bar. Managing other apps' status items by width needs a live AppKit process, not a script that is re-run every few seconds. The full comparison is in [StatusItemKit's README](https://github.com/nicholaspsmith/StatusItemKit#why-not-swiftbar).
+
 ## The menu-bar suite
 
 Part of a suite of macOS menu-bar apps that share one framework, one
