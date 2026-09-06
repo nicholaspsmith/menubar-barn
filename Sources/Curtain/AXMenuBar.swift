@@ -37,14 +37,46 @@ enum AXMenuBar {
         return AXIsProcessTrustedWithOptions(options as CFDictionary)
     }
 
+    /// Processes that answered "no status item" recently, so the next sweep can
+    /// skip them. Most of the ~70 running processes have no menu-bar item, and a
+    /// few of those — updaters, helpers — never answer the accessibility API at
+    /// all, so each one costs the full messaging timeout every time it is asked.
+    /// Asked once a minute instead, they cost nothing in between. An app that
+    /// *gains* a status item is picked up within that minute.
+    private static var noBarUntil: [pid_t: Date] = [:]
+    private static let noBarTTL: TimeInterval = 60
+    private static let lock = NSLock()
+
+    /// Every process is asked concurrently, so a sweep costs about as much as
+    /// the slowest single answer rather than the sum of all of them.
+    ///
+    /// This is what kept the panel from opening: two sweeps per click, two or
+    /// three per hide, all on the main thread, and every unresponsive process
+    /// adding 0.4s to each. With a couple of stuck helpers running, a hide could
+    /// block Curtain for five seconds or more, and clicks made in that window
+    /// appeared to do nothing until it finished (2026-09-06).
     static func items() -> [MenuBarItem] {
         guard isTrusted else { return [] }
-        var found: [MenuBarItem] = []
-        for app in NSWorkspace.shared.runningApplications {
-            guard app.activationPolicy != .prohibited, !app.isTerminated else { continue }
+        let now = Date()
+        let apps = NSWorkspace.shared.runningApplications.filter { app in
+            guard app.activationPolicy != .prohibited, !app.isTerminated else { return false }
+            lock.lock(); defer { lock.unlock() }
+            if let until = noBarUntil[app.processIdentifier], until > now { return false }
+            return true
+        }
+
+        var perApp = [[MenuBarItem]](repeating: [], count: apps.count)
+        var barless: [pid_t] = []
+        let resultsLock = NSLock()
+        DispatchQueue.concurrentPerform(iterations: apps.count) { index in
+            let app = apps[index]
             let element = AXUIElementCreateApplication(app.processIdentifier)
             AXUIElementSetMessagingTimeout(element, messagingTimeout)
-            guard let bar = statusItemBar(of: element) else { continue }
+            guard let bar = statusItemBar(of: element) else {
+                resultsLock.lock(); barless.append(app.processIdentifier); resultsLock.unlock()
+                return
+            }
+            var found: [MenuBarItem] = []
             for child in children(of: bar) {
                 guard let frame = frame(of: child) else { continue }
                 found.append(MenuBarItem(
@@ -54,8 +86,17 @@ enum AXMenuBar {
                     frame: frame
                 ))
             }
+            resultsLock.lock(); perApp[index] = found; resultsLock.unlock()
         }
-        return found
+
+        lock.lock()
+        for pid in barless { noBarUntil[pid] = now.addingTimeInterval(noBarTTL) }
+        // Forget processes that have exited, so the table cannot grow forever.
+        let alive = Set(NSWorkspace.shared.runningApplications.map(\.processIdentifier))
+        noBarUntil = noBarUntil.filter { alive.contains($0.key) }
+        lock.unlock()
+
+        return perApp.flatMap { $0 }
     }
 
     // MARK: - AX plumbing
