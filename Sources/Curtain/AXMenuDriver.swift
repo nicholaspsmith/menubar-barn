@@ -124,6 +124,32 @@ enum AXMenuDriver {
         return AXUIElementPerformAction(item, kAXPressAction as CFString) == .success
     }
 
+    /// True while the app has a menu open under one of its status items, or a
+    /// real window up (a popover counts; the 1×1 placeholder some apps keep
+    /// does not). How Curtain knows an "open" actually opened something, and
+    /// when the user has finished with it.
+    static func isPresenting(pid: pid_t) -> Bool {
+        let app = AXUIElementCreateApplication(pid)
+        AXUIElementSetMessagingTimeout(app, 0.5)
+        if let bar = element(app, "AXExtrasMenuBar"),
+           children(of: bar).contains(where: { !children(of: $0).isEmpty }) {
+            return true
+        }
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(app, kAXWindowsAttribute as CFString, &value) == .success,
+              let windows = value as? [AXUIElement]
+        else { return false }
+        return windows.contains { window in
+            var sizeValue: CFTypeRef?
+            guard AXUIElementCopyAttributeValue(window, kAXSizeAttribute as CFString, &sizeValue) == .success,
+                  let sizeValue, CFGetTypeID(sizeValue) == AXValueGetTypeID()
+            else { return false }
+            var size = CGSize.zero
+            AXValueGetValue(sizeValue as! AXValue, .cgSize, &size)
+            return size.width > 40 && size.height > 40
+        }
+    }
+
     // MARK: - AX plumbing
 
     /// - Parameter allowPress: whether we may press the status item to make its

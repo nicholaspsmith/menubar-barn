@@ -51,7 +51,9 @@ fighting over the same icons will strand one.
 
 A hidden app's submenu is its **real menu**, read live while its icon sits
 off-screen — so a hidden app stays completely usable and nothing on your bar
-moves. Apps that publish no menu open directly instead. Hide an icon and unhide
+moves. Apps that publish no menu open directly instead; an app that only
+answers a real click (BetterDisplay) gets one: Curtain reveals the bar, clicks
+its icon for you, and hides again when its menu closes. Hide an icon and unhide
 it later and it returns to the exact slot it left.
 
 ## Why it cannot lose an icon

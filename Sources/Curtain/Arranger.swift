@@ -74,6 +74,28 @@ enum Arranger {
         return .success(landed)
     }
 
+    /// A plain left click at `x` on the menu bar — what a user does to open an
+    /// icon's menu. For apps that ignore the accessibility press and only
+    /// answer a real click (BetterDisplay).
+    static func click(atX x: CGFloat) {
+        guard let source = CGEventSource(stateID: .hidSystemState) else { return }
+        let origin = NSEvent.mouseLocation
+        let point = CGPoint(x: x, y: menuBarY)
+        func post(_ type: CGEventType, at p: CGPoint) {
+            guard let event = CGEvent(mouseEventSource: source, mouseType: type, mouseCursorPosition: p, mouseButton: .left)
+            else { return }
+            event.flags = []
+            event.post(tap: .cghidEventTap)
+        }
+        post(.mouseMoved, at: point)
+        usleep(50_000)
+        post(.leftMouseDown, at: point)
+        usleep(60_000)
+        post(.leftMouseUp, at: point)
+        let height = NSScreen.screens.first?.frame.height ?? 0
+        post(.mouseMoved, at: CGPoint(x: origin.x, y: height - origin.y))
+    }
+
     private static func drag(fromX: CGFloat, toX: CGFloat, steps: Int = 14) {
         guard let source = CGEventSource(stateID: .hidSystemState) else { return }
         // Where the pointer was before we borrowed it. Moving someone's cursor to

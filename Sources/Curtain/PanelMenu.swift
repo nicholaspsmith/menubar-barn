@@ -16,6 +16,11 @@ final class PanelMenu: NSObject, NSMenuDelegate {
 
     private var ownerForMenu: [ObjectIdentifier: Owner] = [:]
 
+    /// Called when pressing an app's icon through the accessibility API opened
+    /// nothing. The app wants a real click, which its off-screen icon cannot
+    /// receive — so the owner reveals the bar, clicks it there, and hides again.
+    var onOpenByRevealing: ((pid_t) -> Void)?
+
     /// - Parameter manage: the checklist of which icons are hidden, appended so
     ///   it sits where someone looking at the hidden items would reach for it.
     func build(hidden apps: [HiddenApp], manage: NSMenu?) -> NSMenu {
@@ -130,6 +135,15 @@ final class PanelMenu: NSObject, NSMenuDelegate {
 
     @objc private func openApp(_ sender: NSMenuItem) {
         guard let ref = sender.representedObject as? RowRef else { return }
-        afterMenuCloses { AXMenuDriver.pressItem(forPID: ref.pid) }
+        afterMenuCloses { [weak self] in
+            AXMenuDriver.pressItem(forPID: ref.pid)
+            // BetterDisplay answers the press with success and opens nothing;
+            // it only responds to a real click. Give the press a moment, then
+            // check whether anything actually appeared.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
+                guard !AXMenuDriver.isPresenting(pid: ref.pid) else { return }
+                self?.onOpenByRevealing?(ref.pid)
+            }
+        }
     }
 }

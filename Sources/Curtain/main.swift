@@ -58,6 +58,7 @@ final class App: NSObject, NSApplicationDelegate {
             onPrimaryClick: { [weak self] in self?.showPanel() }
         )
         panel = PanelMenu()
+        panel.onOpenByRevealing = { [weak self] pid in self?.openByRevealing(pid: pid) }
         handle = Handle(controller: controller)
         controller.start()
         settleThenApply()
@@ -406,6 +407,56 @@ final class App: NSObject, NSApplicationDelegate {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
             previous = snapshot()
             check()
+        }
+    }
+
+    // MARK: - Opening an app that needs a real click
+
+    /// Reveal the bar, click the app's icon where it now sits, and hide again
+    /// once whatever it opened has closed. The only way in for an app that
+    /// ignores the accessibility press (BetterDisplay): its icon is off-screen
+    /// while hidden, so no click can reach it there.
+    private func openByRevealing(pid: pid_t) {
+        let name = NSRunningApplication(processIdentifier: pid)?.localizedName ?? "the app"
+        guard isHidden else { return }
+        arrangeLog.notice("open by revealing: \(name, privacy: .public)")
+        toggle()
+        // Not a timed reveal: it ends when the user is done with the menu.
+        rehideTimer?.invalidate()
+        rehideTimer = nil
+        afterBarSettles { [weak self] in
+            guard let self else { return }
+            let geometry = MenuBarGeometry.current()
+            guard let item = AXMenuBar.items()
+                    .filter({ $0.pid == pid && $0.frame.width < 100 })
+                    .max(by: { $0.frame.minX < $1.frame.minX }),
+                  CurtainGeometry.placement(of: item.frame, in: geometry) == .visible
+            else {
+                arrangeLog.error("open by revealing: \(name, privacy: .public) icon not on screen after reveal")
+                self.toggle()
+                self.reportMissing(name, reason: "Its icon could not be brought on screen to click it — too many icons are hidden for the bar to reveal them all.")
+                return
+            }
+            Arranger.click(atX: item.frame.minX + item.frame.width / 2)
+            arrangeLog.notice("open by revealing: clicked \(name, privacy: .public) at x=\(Int(item.frame.minX), privacy: .public)")
+            self.rehideWhenDone(pid: pid, seen: false, deadline: Date().addingTimeInterval(120))
+        }
+    }
+
+    /// Poll until the app has shown something and then closed it, or nothing
+    /// appears within a couple of seconds, or the deadline passes; then hide.
+    private func rehideWhenDone(pid: pid_t, seen: Bool, deadline: Date, started: Date = Date()) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+            guard let self, !self.isHidden else { return }
+            let presenting = AXMenuDriver.isPresenting(pid: pid)
+            let nowSeen = seen || presenting
+            let gaveUp = !nowSeen && Date().timeIntervalSince(started) > 2.5
+            if (nowSeen && !presenting) || gaveUp || Date() >= deadline {
+                arrangeLog.notice("open by revealing: done (seen=\(nowSeen, privacy: .public)); hiding again")
+                self.toggle()
+                return
+            }
+            self.rehideWhenDone(pid: pid, seen: nowSeen, deadline: deadline, started: started)
         }
     }
 
