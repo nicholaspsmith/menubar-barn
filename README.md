@@ -92,8 +92,13 @@ item, so each needs a restart to pick them up.
 ## Known limits
 
 - **The bar has a capacity.** Making an app visible when the strip is already full
-  pushes something into the notch sliver, where it draws nothing. Curtain names
-  whatever lands there, but it cannot create room — hide something in exchange.
+  pushes something into the notch sliver, where it draws nothing — and on a full
+  bar the leftmost thing is Curtain's own chevron, the control you would use to
+  fix it. So Curtain refuses to show an icon when the arithmetic says it will not
+  fit, and tells you how many points to free by hiding something else first. If
+  macOS reflows the bar unexpectedly and the chevron is stranded anyway, Curtain
+  notices within a second and offers to hide the icon again. It still cannot
+  create room.
 - **Some apps are invisible to accessibility.** Mullvad and Raycast publish no
   status item at all, so they can be hidden but not listed or arranged for.
 - **Shortcuts depend on the app.** Rows show key equivalents where an app sets

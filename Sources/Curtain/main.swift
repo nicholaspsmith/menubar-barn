@@ -287,6 +287,12 @@ final class App: NSObject, NSApplicationDelegate {
     /// ordinary on-screen drags.
     @objc private func toggleAppHidden(_ sender: NSMenuItem) {
         guard let app = sender.representedObject as? AppRef else { return }
+        // Showing needs room; hiding makes it. Check while the curtain is drawn,
+        // which is the layout the restored icon will actually have to fit into.
+        if app.isHidden, isHidden, let refusal = roomRefusal(forShowing: app) {
+            report(refusal)
+            return
+        }
         let wasHidden = isHidden
         if isHidden { toggle() }
 
@@ -322,9 +328,87 @@ final class App: NSObject, NSApplicationDelegate {
             case .success:
                 // Only once it is actually back does the remembered spot stop
                 // mattering; a failed restore should still know where to aim.
-                if app.isHidden { PlacementStore.forget(target.key, in: .standard) }
+                if app.isHidden {
+                    PlacementStore.forget(target.key, in: .standard)
+                    self.verifyChevronAfterShowing(app)
+                }
             case .failure(let failure):
                 self.report(failure, for: app.name)
+            }
+        }
+    }
+
+    // MARK: - Capacity
+
+    /// Why showing an icon must not go ahead: the bar is full, and the drag would
+    /// strand whatever is leftmost — usually our own chevron, the one control
+    /// that could put things right.
+    private struct NoRoom {
+        let name: String
+        let victim: String
+        let shortfall: CGFloat
+    }
+
+    /// Nil when the icon fits. Measured against the current bar with our own
+    /// line left out: it lives off-screen by design and would always be
+    /// "leftmost". Items already in the notch sliver count as on the bar, so a
+    /// bar that is already over capacity refuses too.
+    private func roomRefusal(forShowing app: AppRef) -> NoRoom? {
+        let ownPID = ProcessInfo.processInfo.processIdentifier
+        let geometry = MenuBarGeometry.current()
+        let items = AXMenuBar.items()
+        guard let target = items.first(where: { $0.pid == app.pid }) else { return nil }
+        let onBar = items.filter { item in
+            (item.pid != ownPID || item.frame.width < 100)
+                && CurtainGeometry.placement(of: item.frame, in: geometry) != .hidden
+        }
+        guard let leftmost = onBar.min(by: { $0.frame.minX < $1.frame.minX }) else { return nil }
+        let shortfall = CurtainGeometry.shortfallToShow(
+            width: target.frame.width,
+            leftmostVisibleMinX: leftmost.frame.minX,
+            in: geometry
+        )
+        guard shortfall > 0 else { return nil }
+        let victim = leftmost.pid == ownPID ? "Curtain's own chevron" : leftmost.name
+        return NoRoom(name: app.name, victim: victim, shortfall: shortfall)
+    }
+
+    private func report(_ refusal: NoRoom) {
+        let alert = NSAlert()
+        alert.messageText = "No room to show \(refusal.name)"
+        alert.informativeText = "The menu bar is full. Showing it would push \(refusal.victim) "
+            + "into the notch by \(Int(refusal.shortfall.rounded(.up))) pt, where macOS draws nothing. "
+            + "Hide another icon first, then try again."
+        alert.alertStyle = .warning
+        NSApp.activate(ignoringOtherApps: true)
+        alert.runModal()
+    }
+
+    /// Belt and braces for the pre-check. The bar can reflow in ways the
+    /// arithmetic does not predict — on 2026-09-06 a hide drag swapped two
+    /// neighbours outright — so after a restore, read our chevron back. If it has
+    /// landed in the sliver, say so and offer the one fix that needs no chevron:
+    /// hiding the icon again.
+    private func verifyChevronAfterShowing(_ app: AppRef) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+            guard let self else { return }
+            let ownPID = ProcessInfo.processInfo.processIdentifier
+            let geometry = MenuBarGeometry.current()
+            guard let chevron = AXMenuBar.items().first(where: { $0.pid == ownPID && $0.frame.width < 100 }),
+                  CurtainGeometry.placement(of: chevron.frame, in: geometry) == .deadZone
+            else { return }
+            let alert = NSAlert()
+            alert.messageText = "Curtain's chevron is now hidden by the notch"
+            alert.informativeText = "Showing \(app.name) left the bar over capacity: the chevron settled at "
+                + "x=\(Int(chevron.frame.minX)), where macOS draws nothing. Hide \(app.name) again to get it back?"
+            alert.alertStyle = .critical
+            alert.addButton(withTitle: "Hide \(app.name) Again")
+            alert.addButton(withTitle: "Leave It")
+            NSApp.activate(ignoringOtherApps: true)
+            if alert.runModal() == .alertFirstButtonReturn {
+                let undo = NSMenuItem()
+                undo.representedObject = AppRef(pid: app.pid, name: app.name, isHidden: false)
+                self.toggleAppHidden(undo)
             }
         }
     }

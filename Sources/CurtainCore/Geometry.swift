@@ -70,6 +70,27 @@ public enum CurtainGeometry {
         return .visible
     }
 
+    /// How many points short the bar is of showing an icon `width` wide.
+    ///
+    /// Restoring an icon shifts everything to its left by exactly its width, so
+    /// the only question is whether the leftmost visible item — normally
+    /// Curtain's own chevron — still starts inside the drawable strip afterwards.
+    /// Zero means it fits. Anything else is the amount that has to be freed by
+    /// hiding something first, and the caller must refuse rather than drag.
+    ///
+    /// The 2026-09-06 case: the chevron at x=870 on a bar whose first drawable x
+    /// is 868. Unhiding a 32pt icon moved it to 838, into the sliver where macOS
+    /// gives an item a slot and draws nothing — and since the chevron *is* the
+    /// control, nothing could be undone from the bar.
+    public static func shortfallToShow(
+        width: CGFloat,
+        leftmostVisibleMinX: CGFloat,
+        in geometry: MenuBarGeometry
+    ) -> CGFloat {
+        let firstDrawableX = geometry.usableMinX + geometry.effectiveDeadZoneMargin
+        return max(0, firstDrawableX - (leftmostVisibleMinX - width))
+    }
+
     /// Width the line must take so a block of `blockWidth`, sitting immediately
     /// to its left, ends up entirely left of the usable area.
     ///

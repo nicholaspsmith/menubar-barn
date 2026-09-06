@@ -48,3 +48,37 @@ final class GeometryTests: XCTestCase {
         XCTAssertEqual(CurtainGeometry.placement(of: ItemFrame(minX: 4, width: 24), in: external), .visible)
     }
 }
+
+/// Capacity: whether an icon can be made visible without stranding whatever is
+/// leftmost. Written after 2026-09-06, when unhiding Download Recycler on a full
+/// bar pushed Curtain's own chevron into the notch — the one control that could
+/// have undone it.
+final class RoomTests: XCTestCase {
+    private let screen = MenuBarGeometry(usableMinX: 828, usableMaxX: 1496)
+
+    func testFullBarReportsTheShortfall() {
+        // The chevron sat at x=870, two points clear of the sliver. A 32pt icon
+        // restored anywhere to its right shifts it to 838 — 30pt short.
+        let short = CurtainGeometry.shortfallToShow(width: 32, leftmostVisibleMinX: 870, in: screen)
+        XCTAssertEqual(short, 30)
+    }
+
+    func testBarWithRoomReportsNoShortfall() {
+        XCTAssertEqual(CurtainGeometry.shortfallToShow(width: 32, leftmostVisibleMinX: 920, in: screen), 0)
+    }
+
+    func testExactFitIsNotAShortfall() {
+        // 900 - 32 = 868, which is precisely the first drawable x.
+        XCTAssertEqual(CurtainGeometry.shortfallToShow(width: 32, leftmostVisibleMinX: 900, in: screen), 0)
+    }
+
+    func testAlreadyStrandedLeftmostIsShortBeforeAnythingMoves() {
+        XCTAssertEqual(CurtainGeometry.shortfallToShow(width: 24, leftmostVisibleMinX: 840, in: screen), 52)
+    }
+
+    func testDisplayWithoutANotchOnlyMindsTheEdge() {
+        let external = MenuBarGeometry(usableMinX: 0, usableMaxX: 2560)
+        XCTAssertEqual(CurtainGeometry.shortfallToShow(width: 32, leftmostVisibleMinX: 200, in: external), 0)
+        XCTAssertEqual(CurtainGeometry.shortfallToShow(width: 32, leftmostVisibleMinX: 10, in: external), 22)
+    }
+}
