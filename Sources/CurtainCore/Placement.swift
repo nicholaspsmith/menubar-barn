@@ -60,13 +60,19 @@ public enum DropTarget {
     /// Prefers the remembered neighbour, falls back to the remembered x, and
     /// finally to whatever the caller offers — an icon has to go *somewhere*, and
     /// arriving in the wrong place beats not arriving.
+    /// - Parameter floor: the smallest x that counts as "across the line".
+    ///   A remembered clue that resolves left of it would drop the icon back
+    ///   into the hidden block — which is exactly what happened on 2026-09-06,
+    ///   when the remembered neighbour was itself a hidden item — so such clues
+    ///   are ignored in favour of the fallback.
     public static func x(
         for placement: HidePlacement?,
         neighbour: ItemFrame?,
-        fallback: CGFloat
+        fallback: CGFloat,
+        floor: CGFloat = 0
     ) -> CGFloat {
-        if let neighbour { return neighbour.minX - neighbourGap }
-        if let placement, placement.x > 0 { return placement.x }
+        if let neighbour, neighbour.minX - neighbourGap > floor { return neighbour.minX - neighbourGap }
+        if let placement, placement.x > floor { return placement.x }
         return fallback
     }
 }

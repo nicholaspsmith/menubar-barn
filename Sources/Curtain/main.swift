@@ -1,6 +1,9 @@
 import AppKit
 import CurtainCore
+import OSLog
 import StatusItemKit
+
+private let arrangeLog = Logger(subsystem: "com.nicholaspsmith.Curtain", category: "arrange")
 
 /// Curtain — hides a contiguous block of menu-bar icons by widening a status
 /// item of its own, never by moving anyone else's.
@@ -287,6 +290,7 @@ final class App: NSObject, NSApplicationDelegate {
     /// ordinary on-screen drags.
     @objc private func toggleAppHidden(_ sender: NSMenuItem) {
         guard let app = sender.representedObject as? AppRef else { return }
+        arrangeLog.notice("request: \(app.isHidden ? "show" : "hide", privacy: .public) \(app.name, privacy: .public); curtain hidden=\(self.isHidden, privacy: .public)")
         // Showing needs room; hiding makes it. Check while the curtain is drawn,
         // which is the layout the restored icon will actually have to fit into.
         if app.isHidden, isHidden, let refusal = roomRefusal(forShowing: app) {
@@ -308,6 +312,7 @@ final class App: NSObject, NSApplicationDelegate {
         // that agree; a cap keeps a wedged app from stalling the arrange.
         afterBarSettles { [weak self] in
             guard let self else { return }
+            arrangeLog.notice("bar settled; arranging \(app.name, privacy: .public)")
             defer {
                 if wasHidden, !self.isHidden {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { self.toggle() }
@@ -323,12 +328,22 @@ final class App: NSObject, NSApplicationDelegate {
             // be drawable. Hiding: the leftmost on-screen one, for the same reason.
             let candidates = items.filter { $0.pid == app.pid }
             guard let lineX0 = ours.map(\.frame.minX).min(),
-                  let handleX0 = ours.map(\.frame.maxX).max(),
-                  let target0 = app.isHidden
+                  let handleX0 = ours.map(\.frame.maxX).max()
+            else {
+                arrangeLog.error("own items not readable (\(ours.count, privacy: .public) found); giving up")
+                self.reportMissing(app.name, reason: "Curtain could not read its own position on the bar.")
+                return
+            }
+            guard let target0 = app.isHidden
                     ? candidates.max(by: { $0.frame.minX < $1.frame.minX })
                     : candidates.filter({ $0.frame.minX > 0 }).min(by: { $0.frame.minX < $1.frame.minX })
                         ?? candidates.first
-            else { return }
+            else {
+                arrangeLog.error("no status item found for \(app.name, privacy: .public) (pid \(app.pid, privacy: .public)); giving up")
+                self.reportMissing(app.name, reason: "\(app.name) did not answer the accessibility API in time, so its icon could not be located.")
+                return
+            }
+            arrangeLog.notice("\(app.isHidden ? "showing" : "hiding", privacy: .public) \(app.name, privacy: .public) from x=\(Int(target0.frame.minX), privacy: .public) w=\(Int(target0.frame.width), privacy: .public) (line \(Int(lineX0), privacy: .public), handle \(Int(handleX0), privacy: .public))")
 
             let target = target0
             let lineX = lineX0
@@ -344,15 +359,16 @@ final class App: NSObject, NSApplicationDelegate {
 
             let dropX: CGFloat
             if app.isHidden {
-                dropX = self.restoreTarget(for: target, among: items, fallback: handleX + 45)
+                dropX = self.restoreTarget(for: target, among: items, fallback: handleX + 45, floor: handleX)
             } else {
-                self.rememberPlacement(of: target, among: items)
+                self.rememberPlacement(of: target, among: items, rightOf: handleX)
                 dropX = lineX - 25
             }
 
             let result = Arranger.move(target, toX: dropX, in: geometry)
             switch result {
-            case .success:
+            case .success(let landed):
+                arrangeLog.notice("\(app.name, privacy: .public) landed at x=\(Int(landed.minX), privacy: .public) (asked for \(Int(dropX), privacy: .public))")
                 // Only once it is actually back does the remembered spot stop
                 // mattering; a failed restore should still know where to aim.
                 if app.isHidden {
@@ -360,6 +376,7 @@ final class App: NSObject, NSApplicationDelegate {
                     self.verifyChevronAfterShowing(app)
                 }
             case .failure(let failure):
+                arrangeLog.error("\(app.name, privacy: .public) failed: \(String(describing: failure), privacy: .public)")
                 self.report(failure, for: app.name)
             }
         }
@@ -473,11 +490,16 @@ final class App: NSObject, NSApplicationDelegate {
     /// The landmark is the icon immediately to its right, not its own x: an x is
     /// only meaningful against the layout it was measured in, and the bar reflows
     /// every time anything appears, hides or yields.
-    private func rememberPlacement(of item: MenuBarItem, among items: [MenuBarItem]) {
+    ///
+    /// Only an icon that sits right of the chevron qualifies as a landmark: a
+    /// hidden item, or one that has yielded to a sliver, is inside the block
+    /// during a reveal, and aiming beside it drops the restored icon straight
+    /// back into hiding.
+    private func rememberPlacement(of item: MenuBarItem, among items: [MenuBarItem], rightOf handleX: CGFloat) {
         let ownPID = ProcessInfo.processInfo.processIdentifier
         let neighbour = items
             .filter { $0.pid != item.pid && $0.pid != ownPID }
-            .filter { $0.frame.minX >= item.frame.maxX }
+            .filter { $0.frame.minX >= item.frame.maxX && $0.frame.minX >= handleX && $0.frame.width > 4 }
             .min { $0.frame.minX < $1.frame.minX }
 
         PlacementStore.save(
@@ -493,13 +515,27 @@ final class App: NSObject, NSApplicationDelegate {
     private func restoreTarget(
         for item: MenuBarItem,
         among items: [MenuBarItem],
-        fallback: CGFloat
+        fallback: CGFloat,
+        floor: CGFloat
     ) -> CGFloat {
         let placement = PlacementStore.placement(for: item.key, in: .standard)
+        // An app can own several items (Control Center owns many); take the one
+        // that is actually right of the line, or none.
         let neighbour = placement?.rightNeighbour
-            .flatMap { id in items.first { $0.key == id } }
+            .flatMap { id in items.filter { $0.key == id && $0.frame.minX > floor }.min { $0.frame.minX < $1.frame.minX } }
             .map(\.frame)
-        return DropTarget.x(for: placement, neighbour: neighbour, fallback: fallback)
+        return DropTarget.x(for: placement, neighbour: neighbour, fallback: fallback, floor: floor)
+    }
+
+    /// An arrange that could not even start. Silence here is what made the
+    /// second restore of 2026-09-06 look like the app had done nothing.
+    private func reportMissing(_ name: String, reason: String) {
+        let alert = NSAlert()
+        alert.messageText = "Could not move \(name)"
+        alert.informativeText = reason + " Try again in a moment."
+        alert.alertStyle = .warning
+        NSApp.activate(ignoringOtherApps: true)
+        alert.runModal()
     }
 
     /// Say what went wrong rather than leaving an icon somewhere invisible —

@@ -66,4 +66,30 @@ final class PlacementTests: XCTestCase {
         let placement = HidePlacement(rightNeighbour: nil, x: -1200)
         XCTAssertEqual(DropTarget.x(for: placement, neighbour: nil, fallback: 500), 500)
     }
+
+    // MARK: - Drop target must land across the line
+
+    func testNeighbourLeftOfTheLineIsIgnored() {
+        // The remembered neighbour turned out to be a hidden item, sitting in the
+        // block during the reveal. Dropping beside it would re-hide the icon.
+        let x = DropTarget.x(
+            for: HidePlacement(rightNeighbour: "com.apple.controlcenter", x: 1124),
+            neighbour: ItemFrame(minX: 996, width: 16),
+            fallback: 1160,
+            floor: 1115
+        )
+        // The neighbour is rejected; the remembered x, which is right of the
+        // line, is the next best clue.
+        XCTAssertEqual(x, 1124)
+    }
+
+    func testRememberedXLeftOfTheLineIsIgnored() {
+        let x = DropTarget.x(for: HidePlacement(rightNeighbour: nil, x: 900), neighbour: nil, fallback: 1160, floor: 1115)
+        XCTAssertEqual(x, 1160)
+    }
+
+    func testNeighbourRightOfTheLineIsUsed() {
+        let x = DropTarget.x(for: nil, neighbour: ItemFrame(minX: 1180, width: 40), fallback: 1160, floor: 1115)
+        XCTAssertEqual(x, 1180 - DropTarget.neighbourGap)
+    }
 }
