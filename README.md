@@ -10,6 +10,8 @@
 
 <p align="center"><img src="docs/mascot.png" width="160" alt="Curtain mascot, from the Menubarn widget library"></p>
 
+<p align="center">Part of the <a href="https://widgets.nicksmith.software">Menubarn</a> widget library.</p>
+
 <p align="center">
   <img src="docs/images/panel.png" width="260" alt="The panel, listing hidden apps with their menus">
 </p>
