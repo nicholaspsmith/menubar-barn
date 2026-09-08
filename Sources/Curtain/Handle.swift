@@ -29,7 +29,9 @@ final class Handle {
         let side: CGFloat = 18
         let image = NSImage(size: NSSize(width: side, height: side), flipped: false) { _ in
             guard let ctx = NSGraphicsContext.current else { return false }
-            NSColor.black.set()
+            // Barn red, drawn in colour rather than as a template: a barn is not
+            // an abstract glyph, and the doorway and window stay cut-outs.
+            Self.barnRed.set()
             let body = NSBezierPath()
             body.move(to: NSPoint(x: 3, y: 2.5)); body.line(to: NSPoint(x: 3, y: 9))
             body.line(to: NSPoint(x: 5, y: 12.5)); body.line(to: NSPoint(x: 9, y: 15.5)); body.line(to: NSPoint(x: 13, y: 12.5))
@@ -50,9 +52,11 @@ final class Handle {
             }
             return true
         }
-        image.isTemplate = true
+        image.isTemplate = false
         return image
     }
+
+    private static let barnRed = NSColor(red: 0.64, green: 0.21, blue: 0.17, alpha: 1)
 
     /// A chevron stroked as a path, matching how `MeterIcon` draws across these
     /// apps. Points the way the icons will go when clicked.
