@@ -25,6 +25,7 @@ final class App: NSObject, NSApplicationDelegate {
     private var hasSettled = false
     private var rehideTimer: Timer?
     private var revealMode = RevealModeStore.load(from: .standard)
+    private var handleStyle = HandleStyleStore.load(from: .standard)
     private var peekToken = UUID().uuidString
     private static let settleDelay: TimeInterval = 1.5
     /// Comfortably longer than the 5s poll that refreshes it, short enough that a
@@ -74,7 +75,7 @@ final class App: NSObject, NSApplicationDelegate {
     // MARK: - Curtain state
 
     private func applyState() {
-        handle.draw(hidden: isHidden)
+        handle.draw(hidden: isHidden, style: handleStyle)
 
         // Never widen before the system has placed the line. An item created —
         // or re-placed — while already wide does not fit at its ranked spot, so
@@ -149,6 +150,10 @@ final class App: NSObject, NSApplicationDelegate {
         reveal.submenu = buildRevealMenu()
         menu.addItem(reveal)
 
+        let icon = NSMenuItem(title: "Icon", action: nil, keyEquivalent: "")
+        icon.submenu = buildIconMenu()
+        menu.addItem(icon)
+
         let login = actionItem("Start at Login", #selector(toggleLogin))
         login.state = LoginItem.isEnabled ? .on : .off
         menu.addItem(login)
@@ -209,6 +214,27 @@ final class App: NSObject, NSApplicationDelegate {
             menu.addItem(item)
         }
         return menu
+    }
+
+    /// Barn or chevron, ticked for the current choice.
+    private func buildIconMenu() -> NSMenu {
+        let menu = NSMenu()
+        for style in HandleStyle.allCases {
+            let item = actionItem(style.label, #selector(selectHandleStyle(_:)))
+            item.representedObject = style.rawValue
+            item.state = style == handleStyle ? .on : .off
+            menu.addItem(item)
+        }
+        return menu
+    }
+
+    @objc private func selectHandleStyle(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String,
+              let style = HandleStyle(rawValue: raw)
+        else { return }
+        handleStyle = style
+        HandleStyleStore.save(style, to: .standard)
+        handle.draw(hidden: isHidden, style: style)
     }
 
     /// Left click drops the hidden icons down as a menu, each with its own real

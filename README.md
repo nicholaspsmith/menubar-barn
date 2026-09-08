@@ -47,7 +47,11 @@ fighting over the same icons will strand one.
 | | |
 |---|---|
 | **Left click** | the hidden icons, each with its own live menu |
-| **Right click** | Manage Icons, reveal behaviour, Start at Login, Quit |
+| **Right click** | Manage Icons, reveal behaviour, Icon (barn or chevron), Start at Login, Quit |
+
+The control is a small barn by default: doors shut while the curtain is drawn,
+open while the icons are revealed. Prefer the original chevron? Right click ▸
+Icon ▸ Chevron.
 
 A hidden app's submenu is its **real menu**, read live while its icon sits
 off-screen — so a hidden app stays completely usable and nothing on your bar
