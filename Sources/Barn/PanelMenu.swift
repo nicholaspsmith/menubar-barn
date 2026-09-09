@@ -68,7 +68,7 @@ final class PanelMenu: NSObject, NSMenuDelegate {
 
         if let manage {
             menu.addItem(.separator())
-            let item = NSMenuItem(title: "Manage Icons…", action: nil, keyEquivalent: "")
+            let item = NSMenuItem(title: "Visible Icons…", action: nil, keyEquivalent: "")
             item.submenu = manage
             menu.addItem(item)
         }

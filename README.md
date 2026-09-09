@@ -35,7 +35,8 @@ when prompted — it is how Barn reads where icons sit and what hidden apps'
 menus contain.
 
 Then **⌘-drag the barn** so everything you want hidden sits to its left. Or let
-the app do the dragging: right-click ▸ Manage Icons.
+the app do the dragging: right-click ▸ Visible Icons, where a tick means the
+icon stays on the bar and unticking it puts it in the barn.
 
 Requires macOS 13+ and Swift 5.9. Run only one menu-bar manager at a time — two
 fighting over the same icons will strand one.
@@ -45,7 +46,7 @@ fighting over the same icons will strand one.
 | | |
 |---|---|
 | **Left click** | the hidden icons, each with its own live menu |
-| **Right click** | Manage Icons, reveal behaviour, Icon (barn or chevron), Start at Login, Quit |
+| **Right click** | Visible Icons (ticked = on the bar), reveal behaviour, Icon (barn or chevron), Start at Login, Quit |
 
 ## The menu-bar icon
 

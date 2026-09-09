@@ -211,7 +211,7 @@ final class App: NSObject, NSApplicationDelegate {
         if !menu.items.isEmpty { menu.addItem(.separator()) }
 
         if AXMenuBar.isTrusted {
-            let manage = NSMenuItem(title: "Manage Icons", action: nil, keyEquivalent: "")
+            let manage = NSMenuItem(title: "Visible Icons", action: nil, keyEquivalent: "")
             manage.submenu = buildManageMenu()
             menu.addItem(manage)
         }
@@ -267,7 +267,8 @@ final class App: NSObject, NSApplicationDelegate {
         for app in apps {
             let hidden = BarnGeometry.placement(of: app.frame, in: geometry) == .hidden
             let item = actionItem(app.name, #selector(toggleAppHidden(_:)))
-            item.state = hidden ? .on : .off
+            // A tick means the icon is on the bar; unticked means it is in the barn.
+            item.state = hidden ? .off : .on
             item.representedObject = AppRef(pid: app.pid, name: app.name, isHidden: hidden)
             menu.addItem(item)
         }
