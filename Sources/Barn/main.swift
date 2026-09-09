@@ -71,13 +71,27 @@ final class App: NSObject, NSApplicationDelegate {
             UserDefaults.standard.set(value, forKey: key)
         }
 
+        // One attached menu, built per click: the hidden-icons panel on a left
+        // click, the management menu on a right or control click. Attaching
+        // it (rather than popping one by hand) keeps AppKit's native tracking:
+        // a quick click leaves it open, a held click selects on release.
         controller = StatusItemController(
             pollInterval: 5,
             onPoll: { [weak self] in self?.applyState() },
-            onBuildMenu: { [weak self] menu in self?.buildMenu(menu) },
-            autosaveName: "BarnHandle",
-            onPrimaryClick: { [weak self] in self?.showPanel() }
+            onBuildMenu: { [weak self] menu in
+                guard let self else { return }
+                if StatusItemController.isSecondaryClick { self.buildMenu(menu) } else { self.buildPanel(into: menu) }
+            },
+            autosaveName: "BarnHandle"
         )
+        controller.onMenuWillOpen = { [weak self] in
+            guard let self else { return }
+            self.handle.draw(hidden: false, style: self.handleStyle)
+        }
+        controller.onMenuDidClose = { [weak self] in
+            guard let self else { return }
+            self.handle.draw(hidden: self.isHidden, style: self.handleStyle)
+        }
         panel = PanelMenu()
         panel.onOpenByRevealing = { [weak self] pid in self?.openByRevealing(pid: pid) }
         handle = Handle(controller: controller)
@@ -260,21 +274,20 @@ final class App: NSObject, NSApplicationDelegate {
     /// Left click drops the hidden icons down as a menu, each with its own real
     /// menu inside. Nothing moves and nothing disappears — the whole point of
     /// presenting them here rather than shuffling the bar to make them visible.
-    private func showPanel() {
+    /// The hidden-icons panel, built into the item's attached menu.
+    private func buildPanel(into menu: NSMenu) {
         let apps = HiddenApps.current(
             in: MenuBarGeometry.current(),
             ownPID: ProcessInfo.processInfo.processIdentifier
         )
-        // The barn's doors open while its menu is up — the hidden icons are
-        // "out" for as long as the menu is — and shut again when it closes.
-        // popUp calls back when the menu has closed; the doors shut then.
-        handle.draw(hidden: false, style: handleStyle)
-        controller.popUp(panel.build(
+        let built = panel.build(
             hidden: apps,
             manage: AXMenuBar.isTrusted ? buildManageMenu() : nil
-        )) { [weak self] in
-            guard let self else { return }
-            self.handle.draw(hidden: self.isHidden, style: self.handleStyle)
+        )
+        menu.autoenablesItems = false
+        for item in built.items {
+            built.removeItem(item)
+            menu.addItem(item)
         }
     }
 
