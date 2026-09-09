@@ -39,7 +39,7 @@ menus contain.
 Then **⌘-drag the barn** so everything you want hidden sits to its left. Or let
 the app do the dragging: right-click ▸ Manage Icons.
 
-Requires macOS 13+ and Swift 5.9. Quit Ice or Bartender first — two managers
+Requires macOS 13+ and Swift 5.9. Run only one menu-bar manager at a time — two
 fighting over the same icons will strand one.
 
 ## Using it
@@ -72,34 +72,18 @@ Curtain hides by **width**. A status item of its own grows leftward, sliding its
 neighbours off the display. Items to its right never move, and no other app's
 state is written.
 
-That matters because the usual approach is to *move* other apps' icons, and
-moving is where they get lost. This project exists because an icon vanished: the
-app was healthy, its item present, the accessibility API reporting a real 32×24
-slot — but the slot sat nine points from the notch, and that sliver renders
-nothing. Ice had dragged it there and never checked. Quitting Ice made the same
-mistake in reverse, restoring three icons straight into the notch, all invisible.
+That matters because the usual approach — Ice's, for one — is to *move* other
+apps' icons, and moving is where they get lost. This project exists because an
+icon vanished: the app was healthy, its item present, the accessibility API
+reporting a real 32×24 slot — but the slot sat nine points from the notch, and
+that sliver renders nothing. Ice had dragged it there and never checked, and
+quitting Ice made the same mistake in reverse, restoring three icons straight
+into the notch, all invisible. Curtain cannot do either, because it never moves
+an icon it did not just ask you about.
 
 So Curtain moves an icon only when you ask it to, once, and always reads back
 where it landed. Anything resting somewhere invisible gets named in the menu
 rather than silently disappearing.
-
-## Migrating off Ice
-
-```sh
-./scripts/snapshot-positions.sh     # capture every icon's position first
-```
-
-Then quit Ice and stop it launching at login. It registers via `SMAppService`, so
-there is no LaunchAgent to remove — either switch it off in System Settings ▸
-General ▸ Login Items, or move the app aside:
-
-```sh
-mv /Applications/Ice.app ~/.disabled-apps/
-```
-
-**Rollback:** move `Ice.app` back, run the generated `restore-positions.sh`, and
-relaunch the affected apps — positions are read when an app creates its status
-item, so each needs a restart to pick them up.
 
 ## Known limits
 
