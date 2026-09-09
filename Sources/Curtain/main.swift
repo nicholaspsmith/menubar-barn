@@ -245,10 +245,16 @@ final class App: NSObject, NSApplicationDelegate {
             in: MenuBarGeometry.current(),
             ownPID: ProcessInfo.processInfo.processIdentifier
         )
+        // The barn's doors open while its menu is up — the hidden icons are
+        // "out" for as long as the menu is — and shut again when it closes.
+        // popUp runs the menu to completion, so the redraw after it lands on
+        // dismissal.
+        handle.draw(hidden: false, style: handleStyle)
         controller.popUp(panel.build(
             hidden: apps,
             manage: AXMenuBar.isTrusted ? buildManageMenu() : nil
         ))
+        handle.draw(hidden: isHidden, style: handleStyle)
     }
 
     // MARK: - Menu selectors

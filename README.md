@@ -53,8 +53,8 @@ fighting over the same icons will strand one.
 
 ![The menu-bar icon](docs/menubar-icon.png)
 
-The control is a barn: doors shut while the curtain is drawn, open while the
-icons are revealed. It is drawn a little larger than a normal glyph on purpose,
+The control is a barn: doors shut while the curtain is drawn, open while its
+menu of hidden icons is up or while the icons are revealed on the bar. It is drawn a little larger than a normal glyph on purpose,
 since the other Menubarn characters are supposed to have come out of it. Prefer
 the original chevron? Right click ▸ Icon ▸ Chevron; the bar re-measures the
 handle's width on its own.
