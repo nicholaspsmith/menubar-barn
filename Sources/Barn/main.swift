@@ -118,6 +118,7 @@ final class App: NSObject, NSApplicationDelegate {
     private var strandedSnapshot: [MenuBarItem] = []
     private var itemsSnapshot: [MenuBarItem] = []
     private var menuPIDs: Set<pid_t> = []
+    private var menuProbe: [pid_t: Bool] = [:]
     private var sweepInFlight = false
 
     private func refreshSnapshots() {
@@ -125,16 +126,21 @@ final class App: NSObject, NSApplicationDelegate {
         sweepInFlight = true
         let geometry = MenuBarGeometry.current()
         let ownPID = ProcessInfo.processInfo.processIdentifier
+        let known = menuProbe
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let items = AXMenuBar.items()
             let hidden = HiddenApps.current(in: geometry, ownPID: ownPID)
             let stranded = Watchdog.stranded(in: geometry, ownPID: ownPID)
-            let withMenus = Set(hidden.filter { AXMenuDriver.hasMenu(forPID: $0.pid) }.map(\.pid))
+            // Probe each app for a menu once per launch, not on every poll.
+            var probe = known
+            for app in hidden where probe[app.pid] == nil { probe[app.pid] = AXMenuDriver.hasMenu(forPID: app.pid) }
+            let withMenus = Set(probe.filter { $0.value }.map(\.key))
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.itemsSnapshot = items
                 self.hiddenSnapshot = hidden
                 self.strandedSnapshot = stranded
+                self.menuProbe = probe
                 self.menuPIDs = withMenus
                 self.sweepInFlight = false
             }

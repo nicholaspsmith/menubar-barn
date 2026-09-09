@@ -92,8 +92,10 @@ enum AXMenuDriver {
     /// menu on press therefore shows no submenu here, which is the right trade:
     /// merely listing what is hidden must not set anything off.
     static func hasMenu(forPID pid: pid_t) -> Bool {
+        // Read-only: this never pressed the item, so there is nothing to cancel.
+        // Sending AXCancel to a menu the app had not opened made some apps
+        // activate themselves, stealing focus from whatever was being typed in.
         guard let menu = menu(forPID: pid, allowPress: false) else { return false }
-        defer { close(menu) }
         return !children(of: menu).isEmpty
     }
 
