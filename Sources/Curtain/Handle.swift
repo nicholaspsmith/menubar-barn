@@ -26,9 +26,11 @@ final class Handle {
     /// cut out so the bar shows through — while the icons are revealed. Same
     /// 18pt template canvas as the chevron, so switching styles moves nothing.
     private static func barn(open: Bool) -> NSImage {
-        let side: CGFloat = 18
+        // Drawn on an 18pt grid, shown at the full 22pt the bar allows.
+        let side: CGFloat = 22
         let image = NSImage(size: NSSize(width: side, height: side), flipped: false) { _ in
             guard let ctx = NSGraphicsContext.current else { return false }
+            let scale = NSAffineTransform(); scale.scale(by: side / 18); scale.concat()
             // Barn red, drawn in colour rather than as a template: a barn is not
             // an abstract glyph, and the doorway and window stay cut-outs.
             Self.barnRed.set()
