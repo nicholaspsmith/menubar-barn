@@ -91,6 +91,7 @@ final class App: NSObject, NSApplicationDelegate {
         controller.onMenuDidClose = { [weak self] in
             guard let self else { return }
             self.handle.draw(hidden: self.isHidden, style: self.handleStyle)
+            self.refreshSnapshots()
         }
         panel = PanelMenu()
         panel.onOpenByRevealing = { [weak self] pid in self?.openByRevealing(pid: pid) }
@@ -108,8 +109,41 @@ final class App: NSObject, NSApplicationDelegate {
 
     // MARK: - Barn state
 
+    /// What the menus show. Swept off the main thread on every poll and after
+    /// the menu closes, never while a menu is opening: the sweep blocks for up
+    /// to the AX messaging timeout, and AppKit abandons a status menu whose
+    /// `menuNeedsUpdate` blocks that long — the panel used to flash open and
+    /// shut whenever another app was frontmost.
+    private var hiddenSnapshot: [HiddenApp] = []
+    private var strandedSnapshot: [MenuBarItem] = []
+    private var itemsSnapshot: [MenuBarItem] = []
+    private var menuPIDs: Set<pid_t> = []
+    private var sweepInFlight = false
+
+    private func refreshSnapshots() {
+        guard AXMenuBar.isTrusted, !sweepInFlight else { return }
+        sweepInFlight = true
+        let geometry = MenuBarGeometry.current()
+        let ownPID = ProcessInfo.processInfo.processIdentifier
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let items = AXMenuBar.items()
+            let hidden = HiddenApps.current(in: geometry, ownPID: ownPID)
+            let stranded = Watchdog.stranded(in: geometry, ownPID: ownPID)
+            let withMenus = Set(hidden.filter { AXMenuDriver.hasMenu(forPID: $0.pid) }.map(\.pid))
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.itemsSnapshot = items
+                self.hiddenSnapshot = hidden
+                self.strandedSnapshot = stranded
+                self.menuPIDs = withMenus
+                self.sweepInFlight = false
+            }
+        }
+    }
+
     private func applyState() {
         handle.draw(hidden: isHidden, style: handleStyle)
+        refreshSnapshots()
 
         // Never widen before the system has placed the line. An item created —
         // or re-placed — while already wide does not fit at its ranked spot, so
@@ -160,11 +194,7 @@ final class App: NSObject, NSApplicationDelegate {
         menu.removeAllItems()
 
         if AXMenuBar.isTrusted {
-            let stranded = Watchdog.stranded(
-                in: MenuBarGeometry.current(),
-                ownPID: ProcessInfo.processInfo.processIdentifier
-            )
-            for item in stranded {
+            for item in strandedSnapshot {
                 menu.addItem(disabledItem("⚠ \(item.name) is in the notch dead zone"))
             }
         } else {
@@ -218,7 +248,7 @@ final class App: NSObject, NSApplicationDelegate {
         let ownPID = ProcessInfo.processInfo.processIdentifier
 
         var seen = Set<pid_t>()
-        let apps = AXMenuBar.items()
+        let apps = itemsSnapshot
             .filter { $0.pid != ownPID }
             .filter { seen.insert($0.pid).inserted }
             .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
@@ -276,13 +306,10 @@ final class App: NSObject, NSApplicationDelegate {
     /// presenting them here rather than shuffling the bar to make them visible.
     /// The hidden-icons panel, built into the item's attached menu.
     private func buildPanel(into menu: NSMenu) {
-        let apps = HiddenApps.current(
-            in: MenuBarGeometry.current(),
-            ownPID: ProcessInfo.processInfo.processIdentifier
-        )
         let built = panel.build(
-            hidden: apps,
-            manage: AXMenuBar.isTrusted ? buildManageMenu() : nil
+            hidden: hiddenSnapshot,
+            manage: AXMenuBar.isTrusted ? buildManageMenu() : nil,
+            hasMenu: { [menuPIDs] in menuPIDs.contains($0) }
         )
         menu.autoenablesItems = false
         for item in built.items {

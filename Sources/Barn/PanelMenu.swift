@@ -23,7 +23,11 @@ final class PanelMenu: NSObject, NSMenuDelegate {
 
     /// - Parameter manage: the checklist of which icons are hidden, appended so
     ///   it sits where someone looking at the hidden items would reach for it.
-    func build(hidden apps: [HiddenApp], manage: NSMenu?) -> NSMenu {
+    /// - Parameter hasMenu: whether an app publishes a menu, answered from a
+    ///   snapshot taken off the main thread. Asking AX here — while the panel
+    ///   is being built for display — opens and closes the app's own menu,
+    ///   which dismisses ours.
+    func build(hidden apps: [HiddenApp], manage: NSMenu?, hasMenu: (pid_t) -> Bool) -> NSMenu {
         let menu = NSMenu()
         // A row whose only job is to hold a submenu has no action, and automatic
         // enabling greys such rows out: the submenu still opened on hover, but
@@ -43,7 +47,7 @@ final class PanelMenu: NSObject, NSMenuDelegate {
                 icon.size = NSSize(width: 16, height: 16)
                 item.image = icon
             }
-            if AXMenuDriver.hasMenu(forPID: app.pid) {
+            if hasMenu(app.pid) {
                 let submenu = NSMenu()
                 submenu.autoenablesItems = false
                 submenu.delegate = self
