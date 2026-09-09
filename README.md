@@ -5,7 +5,7 @@
 
 <p align="center">
   <b>Hide the menu bar icons you never click.</b><br>
-  Click the chevron to get them back — with their real menus, without moving a thing.
+  Click the barn to get them back — with their real menus, without moving a thing.
 </p>
 
 <p align="center"><img src="docs/mascot.png" width="160" alt="Curtain mascot, from the Menubarn widget library"></p>
@@ -36,7 +36,7 @@ That builds it, drops it in `~/Applications`, and launches it. Grant Accessibili
 when prompted — it is how Curtain reads where icons sit and what hidden apps'
 menus contain.
 
-Then **⌘-drag the chevron** so everything you want hidden sits to its left. Or let
+Then **⌘-drag the barn** so everything you want hidden sits to its left. Or let
 the app do the dragging: right-click ▸ Manage Icons.
 
 Requires macOS 13+ and Swift 5.9. Quit Ice or Bartender first — two managers
@@ -49,9 +49,15 @@ fighting over the same icons will strand one.
 | **Left click** | the hidden icons, each with its own live menu |
 | **Right click** | Manage Icons, reveal behaviour, Icon (barn or chevron), Start at Login, Quit |
 
-The control is a small barn by default: doors shut while the curtain is drawn,
-open while the icons are revealed. Prefer the original chevron? Right click ▸
-Icon ▸ Chevron.
+## The menu-bar icon
+
+![The menu-bar icon](docs/menubar-icon.png)
+
+The control is a barn: doors shut while the curtain is drawn, open while the
+icons are revealed. It is drawn a little larger than a normal glyph on purpose,
+since the other Menubarn characters are supposed to have come out of it. Prefer
+the original chevron? Right click ▸ Icon ▸ Chevron; the bar re-measures the
+handle's width on its own.
 
 A hidden app's submenu is its **real menu**, read live while its icon sits
 off-screen — so a hidden app stays completely usable and nothing on your bar
@@ -99,20 +105,20 @@ item, so each needs a restart to pick them up.
 
 - **The bar has a capacity.** Making an app visible when the strip is already full
   pushes something into the notch sliver, where it draws nothing — and on a full
-  bar the leftmost thing is Curtain's own chevron, the control you would use to
+  bar the leftmost thing is Curtain's own handle, the control you would use to
   fix it. So Curtain refuses to show an icon when the arithmetic says it will not
   fit, and tells you how many points to free by hiding something else first. If
-  macOS reflows the bar unexpectedly and the chevron is stranded anyway, Curtain
+  macOS reflows the bar unexpectedly and the handle is stranded anyway, Curtain
   notices within a second and offers to hide the icon again. It still cannot
   create room.
 - **A very wide hidden block cannot all be revealed at once.** Showing an icon
   means revealing the block and dragging that icon across the line, and the
   block's far end can spill under the notch if more is hidden than the bar can
-  display. During the move Curtain's own chevron and every StatusItemKit app
+  display. During the move Curtain's own handle and every StatusItemKit app
   that runs a `YieldClient` give up their width, which is usually enough; if
   the icon still sits under the notch, Curtain says so rather than dragging
   blind. Moving other hidden icons across the line does not help — the total
-  width left of the chevron is unchanged — so the cure is fewer or narrower
+  width left of the handle is unchanged — so the cure is fewer or narrower
   icons on the bar, or more apps that yield.
 - **Some apps are invisible to accessibility.** Mullvad and Raycast publish no
   status item at all, so they can be hidden but not listed or arranged for.
@@ -143,7 +149,7 @@ colour, and cooperative hiding so no icon strands another.
 | [Claude Usage](https://github.com/nicholaspsmith/claude-usage-menubar) | Claude Code plan limits, resets, and live agent sessions |
 | [Apollo Monitor](https://github.com/nicholaspsmith/apollo-monitor-menubar) | Universal Audio Apollo monitor level, plus a UA process watchdog |
 | [Battery Time](https://github.com/nicholaspsmith/battery-time-menubar) | Time remaining, power mode, and 24h usage |
-| [VPN & DNS](https://github.com/nicholaspsmith/vpn-dns-menubar) | One dot for Mullvad + Tailscale state, with a DNS watcher |
+| [VPN & DNS](https://github.com/nicholaspsmith/vpn-dns-menubar) | A chameleon for Mullvad + Tailscale state, with a DNS watcher |
 | [Process Monitor](https://github.com/nicholaspsmith/MacOS_Process_Monitor) | Process-count sparkline against the per-UID limit |
 | [KeyLight](https://github.com/nicholaspsmith/keylight-menubar) | Ctrl+brightness keys remapped to keyboard backlight |
 | [MacRecorder](https://github.com/nicholaspsmith/MacRecorder) | Screen recording with system audio |
