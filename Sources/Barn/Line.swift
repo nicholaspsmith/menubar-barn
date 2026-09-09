@@ -30,7 +30,7 @@ final class Line {
 
     var width: CGFloat { item.length }
 
-    func hide() { item.length = Self.hiddenWidth }
+    func hide() { if item.length != Self.hiddenWidth { item.length = Self.hiddenWidth } }
 
-    func show() { item.length = BarnGeometry.showWidth }
+    func show() { if item.length != BarnGeometry.showWidth { item.length = BarnGeometry.showWidth } }
 }
