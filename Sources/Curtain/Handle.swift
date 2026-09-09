@@ -22,34 +22,34 @@ final class Handle {
         }
     }
 
-    /// A small barn. Doors shut while the curtain is drawn, open — the doorway
-    /// cut out so the bar shows through — while the icons are revealed. Same
-    /// 18pt template canvas as the chevron, so switching styles moves nothing.
+    /// A barn. Doors shut while the curtain is drawn, open — the doorway cut
+    /// out so the bar shows through — while the icons are revealed. Drawn on
+    /// its own 26x22 canvas, deliberately bigger than the chevron's 18pt one:
+    /// the characters are meant to have come out of it. The status item is
+    /// variable-length, so the bar re-measures when the style switches.
     private static func barn(open: Bool) -> NSImage {
-        // Drawn on an 18pt grid, shown at the full 22pt the bar allows.
-        let side: CGFloat = 22
-        let image = NSImage(size: NSSize(width: side, height: side), flipped: false) { _ in
+        let size = NSSize(width: 26, height: 22)
+        let image = NSImage(size: size, flipped: false) { _ in
             guard let ctx = NSGraphicsContext.current else { return false }
-            let scale = NSAffineTransform(); scale.scale(by: side / 18); scale.concat()
             // Barn red, drawn in colour rather than as a template: a barn is not
             // an abstract glyph, and the doorway and window stay cut-outs.
             Self.barnRed.set()
             let body = NSBezierPath()
-            body.move(to: NSPoint(x: 3, y: 2.5)); body.line(to: NSPoint(x: 3, y: 9))
-            body.line(to: NSPoint(x: 5, y: 12.5)); body.line(to: NSPoint(x: 9, y: 15.5)); body.line(to: NSPoint(x: 13, y: 12.5))
-            body.line(to: NSPoint(x: 15, y: 9)); body.line(to: NSPoint(x: 15, y: 2.5)); body.close()
+            body.move(to: NSPoint(x: 2, y: 1)); body.line(to: NSPoint(x: 2, y: 10.5))
+            body.line(to: NSPoint(x: 5, y: 16)); body.line(to: NSPoint(x: 13, y: 21)); body.line(to: NSPoint(x: 21, y: 16))
+            body.line(to: NSPoint(x: 24, y: 10.5)); body.line(to: NSPoint(x: 24, y: 1)); body.close()
             body.fill()
-            // Doorway and hayloft window are holes: template tinting keys off alpha.
+            // Doorway and hayloft window are holes.
             ctx.compositingOperation = .destinationOut
-            NSBezierPath(roundedRect: NSRect(x: 6.5, y: 2.5, width: 5, height: 6), xRadius: 0.6, yRadius: 0.6).fill()
-            NSBezierPath(ovalIn: NSRect(x: 7.9, y: 10.2, width: 2.2, height: 2.2)).fill()
+            NSBezierPath(roundedRect: NSRect(x: 9.3, y: 1, width: 7.4, height: 8.6), xRadius: 0.8, yRadius: 0.8).fill()
+            NSBezierPath(ovalIn: NSRect(x: 11.4, y: 12.4, width: 3.2, height: 3.2)).fill()
             ctx.compositingOperation = .sourceOver
             if !open {
-                NSBezierPath(rect: NSRect(x: 7, y: 2.5, width: 4, height: 5.5)).fill()
+                NSBezierPath(rect: NSRect(x: 10, y: 1, width: 6, height: 7.9)).fill()
                 ctx.compositingOperation = .destinationOut
                 let seam = NSBezierPath()
-                seam.move(to: NSPoint(x: 9, y: 2.5)); seam.line(to: NSPoint(x: 9, y: 8))
-                seam.lineWidth = 0.7; seam.stroke()
+                seam.move(to: NSPoint(x: 13, y: 1)); seam.line(to: NSPoint(x: 13, y: 8.9))
+                seam.lineWidth = 0.9; seam.stroke()
                 ctx.compositingOperation = .sourceOver
             }
             return true
