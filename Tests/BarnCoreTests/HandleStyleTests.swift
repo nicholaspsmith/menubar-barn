@@ -1,9 +1,9 @@
 import XCTest
-@testable import CurtainCore
+@testable import BarnCore
 
 final class HandleStyleTests: XCTestCase {
     private var defaults: UserDefaults!
-    private let suite = "curtain.handlestyle.tests"
+    private let suite = "barn.handlestyle.tests"
 
     override func setUp() {
         super.setUp()

@@ -1,11 +1,11 @@
 import AppKit
-import CurtainCore
+import BarnCore
 import OSLog
 import StatusItemKit
 
-private let arrangeLog = Logger(subsystem: "com.nicholaspsmith.Curtain", category: "arrange")
+private let arrangeLog = Logger(subsystem: "com.nicholaspsmith.Barn", category: "arrange")
 
-/// Curtain — hides a contiguous block of menu-bar icons by widening a status
+/// Barn — hides a contiguous block of menu-bar icons by widening a status
 /// item of its own, never by moving anyone else's.
 ///
 /// See docs/superpowers/specs/2026-08-17-menubar-curtain-design.md for why that
@@ -13,7 +13,7 @@ private let arrangeLog = Logger(subsystem: "com.nicholaspsmith.Curtain", categor
 ///
 /// Two items, because they cannot be one: macOS renders a status item only when
 /// its slot fits entirely within the usable area right of the notch, so the
-/// curtain — hundreds of points wide — is permanently invisible, and the control
+/// wall — hundreds of points wide — is permanently invisible, and the control
 /// has to be a separate narrow item beside the user's own icons.
 final class App: NSObject, NSApplicationDelegate {
     private var controller: StatusItemController!
@@ -29,7 +29,7 @@ final class App: NSObject, NSApplicationDelegate {
     private var peekToken = UUID().uuidString
     private static let settleDelay: TimeInterval = 1.5
     /// Comfortably longer than the 5s poll that refreshes it, short enough that a
-    /// crashed Curtain returns the sibling icons quickly.
+    /// crashed Barn returns the sibling icons quickly.
     private static let yieldTTL: TimeInterval = 15
 
     /// Where to park our two items on a bar we have never seen.
@@ -39,12 +39,32 @@ final class App: NSObject, NSApplicationDelegate {
     /// icons to keep and right of the icons to hide; the handle ranks just right
     /// of the line so it lands in the visible strip. The user can Cmd-drag either
     /// one, and macOS persists wherever they leave it.
+    /// Barn used to be called Curtain (bundle id `com.nicholaspsmith.Curtain`).
+    /// On the first launch under the new name, carry every setting across —
+    /// hidden apps, placements, handle style, reveal mode, and the two status
+    /// items' positions — so the rename costs the user nothing but a fresh
+    /// Accessibility grant, which macOS keys to the bundle id.
+    private static func migrateFromCurtain() {
+        let flag = "MigratedFromCurtain"
+        let std = UserDefaults.standard
+        guard !std.bool(forKey: flag),
+              let old = std.persistentDomain(forName: "com.nicholaspsmith.Curtain"), !old.isEmpty
+        else { std.set(true, forKey: flag); return }
+        for (key, value) in old where std.object(forKey: key) == nil {
+            let renamed = key.replacingOccurrences(of: "CurtainLine", with: "BarnLine")
+                             .replacingOccurrences(of: "CurtainHandle", with: "BarnHandle")
+            std.set(value, forKey: renamed)
+        }
+        std.set(true, forKey: flag)
+    }
+
     private static let defaults: [String: Double] = [
-        "NSStatusItem Preferred Position CurtainLine": 600,
-        "NSStatusItem Preferred Position CurtainHandle": 590,
+        "NSStatusItem Preferred Position BarnLine": 600,
+        "NSStatusItem Preferred Position BarnHandle": 590,
     ]
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        Self.migrateFromCurtain()
         // Seed positions before the items exist — macOS reads these when an item
         // is created, and never again.
         for (key, value) in Self.defaults where UserDefaults.standard.object(forKey: key) == nil {
@@ -55,7 +75,7 @@ final class App: NSObject, NSApplicationDelegate {
             pollInterval: 5,
             onPoll: { [weak self] in self?.applyState() },
             onBuildMenu: { [weak self] menu in self?.buildMenu(menu) },
-            autosaveName: "CurtainHandle",
+            autosaveName: "BarnHandle",
             onPrimaryClick: { [weak self] in self?.showPanel() }
         )
         panel = PanelMenu()
@@ -72,7 +92,7 @@ final class App: NSObject, NSApplicationDelegate {
         )
     }
 
-    // MARK: - Curtain state
+    // MARK: - Barn state
 
     private func applyState() {
         handle.draw(hidden: isHidden, style: handleStyle)
@@ -94,7 +114,7 @@ final class App: NSObject, NSApplicationDelegate {
             // needs ten times that.
             //
             // Re-posted on every poll tick rather than once: each client arms a
-            // short self-restore timer from the TTL, so a crashed Curtain can
+            // short self-restore timer from the TTL, so a crashed Barn can
             // never leave their icons hidden. Refreshing it is what holds the
             // reveal open.
             MenuBarYield.post(.init(state: .yield, token: peekToken, ttl: Self.yieldTTL))
@@ -159,7 +179,7 @@ final class App: NSObject, NSApplicationDelegate {
         menu.addItem(login)
 
         menu.addItem(.separator())
-        menu.addItem(actionItem("Quit Curtain", #selector(quit), key: "q"))
+        menu.addItem(actionItem("Quit Barn", #selector(quit), key: "q"))
     }
 
     private func actionItem(_ title: String, _ selector: Selector, key: String = "") -> NSMenuItem {
@@ -172,7 +192,7 @@ final class App: NSObject, NSApplicationDelegate {
         NSMenuItem(title: title, action: nil, keyEquivalent: "")
     }
 
-    /// One row per menu-bar app, ticked when the curtain is hiding it. Selecting
+    /// One row per menu-bar app, ticked when Barn is hiding it. Selecting
     /// a row moves that icon across the line.
     ///
     /// A checklist rather than a settings window with an Apply button: each
@@ -195,7 +215,7 @@ final class App: NSObject, NSApplicationDelegate {
         }
 
         for app in apps {
-            let hidden = CurtainGeometry.placement(of: app.frame, in: geometry) == .hidden
+            let hidden = BarnGeometry.placement(of: app.frame, in: geometry) == .hidden
             let item = actionItem(app.name, #selector(toggleAppHidden(_:)))
             item.state = hidden ? .on : .off
             item.representedObject = AppRef(pid: app.pid, name: app.name, isHidden: hidden)
@@ -259,7 +279,7 @@ final class App: NSObject, NSApplicationDelegate {
 
     // MARK: - Menu selectors
 
-    /// Left-clicking the handle flips the curtain; the chevron flips with it, so
+    /// Left-clicking the handle flips the barn; the icon flips with it, so
     /// the icon itself says which way round things are.
     @objc private func toggle() {
         isHidden.toggle()
@@ -324,7 +344,7 @@ final class App: NSObject, NSApplicationDelegate {
     @objc private func toggleAppHidden(_ sender: NSMenuItem) {
         guard let app = sender.representedObject as? AppRef else { return }
         arrangeLog.notice("request: \(app.isHidden ? "show" : "hide", privacy: .public) \(app.name, privacy: .public); curtain hidden=\(self.isHidden, privacy: .public)")
-        // Showing needs room; hiding makes it. Check while the curtain is drawn,
+        // Showing needs room; hiding makes it. Check while the icons are hidden,
         // which is the layout the restored icon will actually have to fit into.
         if app.isHidden, isHidden, let refusal = roomRefusal(forShowing: app) {
             report(refusal)
@@ -364,7 +384,7 @@ final class App: NSObject, NSApplicationDelegate {
                   let handleX0 = ours.map(\.frame.maxX).max()
             else {
                 arrangeLog.error("own items not readable (\(ours.count, privacy: .public) found); giving up")
-                self.reportMissing(app.name, reason: "Curtain could not read its own position on the bar.")
+                self.reportMissing(app.name, reason: "Barn could not read its own position on the bar.")
                 return
             }
             guard let target0 = app.isHidden
@@ -381,7 +401,7 @@ final class App: NSObject, NSApplicationDelegate {
             let target = target0
             let lineX = lineX0
             let handleX = handleX0
-            if app.isHidden, CurtainGeometry.placement(of: target.frame, in: geometry) != .visible {
+            if app.isHidden, BarnGeometry.placement(of: target.frame, in: geometry) != .visible {
                 let firstDrawable = geometry.usableMinX + geometry.deadZoneMargin
                 self.report(
                     .underNotch(name: app.name, at: target.frame.minX, over: firstDrawable - target.frame.minX),
@@ -462,7 +482,7 @@ final class App: NSObject, NSApplicationDelegate {
             guard let item = AXMenuBar.items()
                     .filter({ $0.pid == pid && $0.frame.width < 100 })
                     .max(by: { $0.frame.minX < $1.frame.minX }),
-                  CurtainGeometry.placement(of: item.frame, in: geometry) == .visible
+                  BarnGeometry.placement(of: item.frame, in: geometry) == .visible
             else {
                 arrangeLog.error("open by revealing: \(name, privacy: .public) icon not on screen after reveal")
                 self.toggle()
@@ -514,16 +534,16 @@ final class App: NSObject, NSApplicationDelegate {
         guard let target = items.first(where: { $0.pid == app.pid }) else { return nil }
         let onBar = items.filter { item in
             (item.pid != ownPID || item.frame.width < 100)
-                && CurtainGeometry.placement(of: item.frame, in: geometry) != .hidden
+                && BarnGeometry.placement(of: item.frame, in: geometry) != .hidden
         }
         guard let leftmost = onBar.min(by: { $0.frame.minX < $1.frame.minX }) else { return nil }
-        let shortfall = CurtainGeometry.shortfallToShow(
+        let shortfall = BarnGeometry.shortfallToShow(
             width: target.frame.width,
             leftmostVisibleMinX: leftmost.frame.minX,
             in: geometry
         )
         guard shortfall > 0 else { return nil }
-        let victim = leftmost.pid == ownPID ? "Curtain's own chevron" : leftmost.name
+        let victim = leftmost.pid == ownPID ? "Barn's own chevron" : leftmost.name
         return NoRoom(name: app.name, victim: victim, shortfall: shortfall)
     }
 
@@ -549,10 +569,10 @@ final class App: NSObject, NSApplicationDelegate {
             let ownPID = ProcessInfo.processInfo.processIdentifier
             let geometry = MenuBarGeometry.current()
             guard let chevron = AXMenuBar.items().first(where: { $0.pid == ownPID && $0.frame.width < 100 }),
-                  CurtainGeometry.placement(of: chevron.frame, in: geometry) == .deadZone
+                  BarnGeometry.placement(of: chevron.frame, in: geometry) == .deadZone
             else { return }
             let alert = NSAlert()
-            alert.messageText = "Curtain's chevron is now hidden by the notch"
+            alert.messageText = "Barn's chevron is now hidden by the notch"
             alert.informativeText = "Showing \(app.name) left the bar over capacity: the chevron settled at "
                 + "x=\(Int(chevron.frame.minX)), where macOS draws nothing. Hide \(app.name) again to get it back?"
             alert.alertStyle = .critical

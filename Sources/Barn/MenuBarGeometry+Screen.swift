@@ -1,5 +1,5 @@
 import AppKit
-import CurtainCore
+import BarnCore
 
 extension MenuBarGeometry {
     /// Read the live geometry of the menu bar we manage.

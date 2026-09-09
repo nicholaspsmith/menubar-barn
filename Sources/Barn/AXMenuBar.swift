@@ -1,6 +1,6 @@
 import AppKit
 import ApplicationServices
-import CurtainCore
+import BarnCore
 
 /// One app's status item, as the accessibility API sees it.
 struct MenuBarItem {
@@ -24,7 +24,7 @@ struct MenuBarItem {
 ///
 /// Not everything is legible this way: apps that expose no AX status item —
 /// Mullvad and Raycast on this machine — simply do not appear. They can still be
-/// hidden by the curtain; they just cannot be inspected or arranged for.
+/// hidden by Barn; they just cannot be inspected or arranged for.
 enum AXMenuBar {
     /// Apps can wedge; never block the menu waiting on one.
     private static let messagingTimeout: Float = 0.4
@@ -53,7 +53,7 @@ enum AXMenuBar {
     /// This is what kept the panel from opening: two sweeps per click, two or
     /// three per hide, all on the main thread, and every unresponsive process
     /// adding 0.4s to each. With a couple of stuck helpers running, a hide could
-    /// block Curtain for five seconds or more, and clicks made in that window
+    /// block Barn for five seconds or more, and clicks made in that window
     /// appeared to do nothing until it finished (2026-09-06).
     static func items() -> [MenuBarItem] {
         guard isTrusted else { return [] }

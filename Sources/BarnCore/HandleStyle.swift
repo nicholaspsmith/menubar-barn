@@ -2,7 +2,7 @@ import Foundation
 
 /// What the control in the menu bar looks like.
 public enum HandleStyle: String, CaseIterable, Sendable {
-    /// A small barn whose doors are shut while the curtain is drawn and open
+    /// A barn whose doors are shut while the icons are hidden and open
     /// while the icons are revealed. The default: it is what the Menubarn
     /// library is named for.
     case barn

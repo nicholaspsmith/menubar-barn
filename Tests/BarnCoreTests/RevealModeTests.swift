@@ -1,11 +1,11 @@
 import XCTest
-@testable import CurtainCore
+@testable import BarnCore
 
 final class RevealModeTests: XCTestCase {
-    /// An isolated defaults domain, so the tests never touch the real Curtain
+    /// An isolated defaults domain, so the tests never touch the real Barn
     /// preferences.
     private var defaults: UserDefaults!
-    private let suite = "curtain.revealmode.tests"
+    private let suite = "barn.revealmode.tests"
 
     override func setUp() {
         super.setUp()

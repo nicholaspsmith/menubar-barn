@@ -1,5 +1,5 @@
 import AppKit
-import CurtainCore
+import BarnCore
 
 /// Names icons that have a slot but nowhere useful to be.
 ///
@@ -8,7 +8,7 @@ import CurtainCore
 /// beside the notch, where macOS gives an item a slot and draws nothing. Ice put
 /// it there and never checked. Nothing tells the user; the icon is just gone.
 ///
-/// Curtain cannot always fix that (an item right of the line is beyond our
+/// Barn cannot always fix that (an item right of the line is beyond our
 /// reach), but it can always *say so*, and being told is the entire difference.
 enum Watchdog {
     /// Items sitting where the user can neither see nor click them.
@@ -24,7 +24,7 @@ enum Watchdog {
         var seen = Set<String>()
         return AXMenuBar.items()
             .filter { $0.pid != ownPID }
-            .filter { CurtainGeometry.placement(of: $0.frame, in: geometry) == .deadZone }
+            .filter { BarnGeometry.placement(of: $0.frame, in: geometry) == .deadZone }
             // One warning per app: several items from one app say nothing extra.
             .filter { seen.insert($0.name).inserted }
     }

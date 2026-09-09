@@ -1,13 +1,13 @@
 import AppKit
-import CurtainCore
+import BarnCore
 import StatusItemKit
 
-/// The visible control: a narrow status item showing which way the curtain is
+/// The visible control: a narrow status item showing which way the barn is
 /// drawn, carrying the menu.
 ///
 /// Narrow on purpose. A status item only renders when its slot fits entirely
 /// within the usable area, so the control has to be small enough to sit beside
-/// the user's own icons — which is exactly why it cannot also be the curtain.
+/// the user's own icons — which is exactly why it cannot also be the wall.
 final class Handle {
     private let controller: StatusItemController
 
@@ -22,7 +22,7 @@ final class Handle {
         }
     }
 
-    /// A barn. Doors shut while the curtain is drawn, open — the doorway cut
+    /// A barn. Doors shut while the icons are hidden, open — the doorway cut
     /// out so the bar shows through — while the icons are revealed. Drawn on
     /// its own 26x22 canvas, deliberately bigger than the chevron's 18pt one:
     /// the characters are meant to have come out of it. The status item is

@@ -49,7 +49,7 @@ public enum Placement: Equatable, Sendable {
     case hidden
 }
 
-public enum CurtainGeometry {
+public enum BarnGeometry {
     /// `NSStatusItem.length` clamps near 5012pt in practice; stay just under.
     public static let maxLineWidth: CGFloat = 5000
 
@@ -74,7 +74,7 @@ public enum CurtainGeometry {
     ///
     /// Restoring an icon shifts everything to its left by exactly its width, so
     /// the only question is whether the leftmost visible item — normally
-    /// Curtain's own chevron — still starts inside the drawable strip afterwards.
+    /// Barn's own chevron — still starts inside the drawable strip afterwards.
     /// Zero means it fits. Anything else is the amount that has to be freed by
     /// hiding something first, and the caller must refuse rather than drag.
     ///

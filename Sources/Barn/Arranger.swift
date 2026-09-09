@@ -1,10 +1,10 @@
 import AppKit
-import CurtainCore
+import BarnCore
 
 /// Moves another app's status icon across the line, by synthesizing the Cmd-drag
 /// a user would perform by hand.
 ///
-/// This is the one place Curtain writes something it does not own, and it is
+/// This is the one place Barn writes something it does not own, and it is
 /// deliberately rare: setup only, never continuous. Ice's habit of re-asserting
 /// positions constantly is what stranded an icon in the notch in the first place.
 ///

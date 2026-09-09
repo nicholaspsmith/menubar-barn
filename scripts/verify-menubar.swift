@@ -54,9 +54,9 @@ var stranded: [(String, CGFloat)] = []
 for app in NSWorkspace.shared.runningApplications {
     guard app.activationPolicy != .prohibited, !app.isTerminated else { continue }
     let name = app.localizedName ?? "Unknown"
-    // Curtain's own line is a deliberately enormous item lying off to the left;
+    // Barn's own line is a deliberately enormous item lying off to the left;
     // classifying it alongside real icons would report the mechanism as a fault.
-    guard name != "Curtain" else { continue }
+    guard name != "Barn" else { continue }
 
     let appElement = AXUIElementCreateApplication(app.processIdentifier)
     AXUIElementSetMessagingTimeout(appElement, 0.4)
@@ -90,12 +90,12 @@ print("")
 print("visible: \(visible.count)   hidden: \(hidden.count)   stranded: \(stranded.count)")
 print("")
 
-for name in ["Curtain", "KeyLight", "VPN & DNS", "Battery Time", "Process Monitor"] {
+for name in ["Barn", "KeyLight", "VPN & DNS", "Battery Time", "Process Monitor"] {
     let running = NSWorkspace.shared.runningApplications.contains { $0.localizedName == name }
     print(running ? "  running      \(name)" : "  NOT RUNNING  \(name)")
 }
 let ice = NSWorkspace.shared.runningApplications.contains { $0.localizedName == "Ice" }
-print(ice ? "  WARNING      Ice is running and will fight Curtain" : "  absent       Ice")
+print(ice ? "  WARNING      Ice is running and will fight Barn" : "  absent       Ice")
 
 print("")
 if stranded.isEmpty {

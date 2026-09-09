@@ -1,5 +1,5 @@
 import AppKit
-import CurtainCore
+import BarnCore
 
 /// An app whose status icon is currently parked off-screen.
 struct HiddenApp {
@@ -9,7 +9,7 @@ struct HiddenApp {
 }
 
 enum HiddenApps {
-    /// Apps the curtain is currently hiding, one entry each.
+    /// Apps Barn is currently hiding, one entry each.
     ///
     /// `.hidden` means pushed clear off the left edge — deliberately out of the
     /// way. Items merely resting in the notch are `.deadZone`: stranded rather
@@ -18,7 +18,7 @@ enum HiddenApps {
         var seen = Set<pid_t>()
         return AXMenuBar.items()
             .filter { $0.pid != ownPID }
-            .filter { CurtainGeometry.placement(of: $0.frame, in: geometry) == .hidden }
+            .filter { BarnGeometry.placement(of: $0.frame, in: geometry) == .hidden }
             .filter { seen.insert($0.pid).inserted }
             .map { item in
                 HiddenApp(

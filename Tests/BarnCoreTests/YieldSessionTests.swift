@@ -1,5 +1,5 @@
 import XCTest
-@testable import CurtainCore
+@testable import BarnCore
 
 final class YieldSessionTests: XCTestCase {
     func testNotExpiredBeforeTTL() {

@@ -1,9 +1,9 @@
 import XCTest
-@testable import CurtainCore
+@testable import BarnCore
 
 final class PlacementTests: XCTestCase {
     private var defaults: UserDefaults!
-    private let suite = "curtain.placement.tests"
+    private let suite = "barn.placement.tests"
 
     override func setUp() {
         super.setUp()

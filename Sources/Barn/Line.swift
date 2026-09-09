@@ -1,7 +1,7 @@
 import AppKit
-import CurtainCore
+import BarnCore
 
-/// The curtain proper: an invisible status item whose *width* pushes its
+/// The barn wall proper: an invisible status item whose *width* pushes its
 /// left-hand neighbours off the display.
 ///
 /// It draws nothing, and it cannot: macOS renders a status item only when its
@@ -22,8 +22,8 @@ final class Line {
     static let hiddenWidth: CGFloat = 2000
 
     init() {
-        item = NSStatusBar.system.statusItem(withLength: CurtainGeometry.showWidth)
-        item.autosaveName = "CurtainLine"
+        item = NSStatusBar.system.statusItem(withLength: BarnGeometry.showWidth)
+        item.autosaveName = "BarnLine"
         item.button?.title = ""
         item.button?.image = nil
     }
@@ -32,5 +32,5 @@ final class Line {
 
     func hide() { item.length = Self.hiddenWidth }
 
-    func show() { item.length = CurtainGeometry.showWidth }
+    func show() { item.length = BarnGeometry.showWidth }
 }

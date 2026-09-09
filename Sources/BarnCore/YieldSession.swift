@@ -4,7 +4,7 @@ import Foundation
 ///
 /// The session carries its own deadline so that *both* ends can decide to
 /// restore without further messages. That is the point: every app that yields
-/// its status item arms a local timer from this TTL, so if Curtain crashes or is
+/// its status item arms a local timer from this TTL, so if Barn crashes or is
 /// force-quit mid-peek, the icons come back on their own. No shutdown path can
 /// leave the user's menu bar broken.
 public struct YieldSession: Equatable, Sendable {

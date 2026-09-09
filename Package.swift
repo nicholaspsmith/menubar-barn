@@ -2,26 +2,26 @@
 import PackageDescription
 
 let package = Package(
-    name: "Curtain",
+    name: "Barn",
     platforms: [.macOS(.v13)],
     products: [
-        .executable(name: "Curtain", targets: ["Curtain"]),
-        .library(name: "CurtainCore", targets: ["CurtainCore"]),
+        .executable(name: "Barn", targets: ["Barn"]),
+        .library(name: "BarnCore", targets: ["BarnCore"]),
     ],
     dependencies: [
         .package(path: "../StatusItemKit"),
         .package(path: "../HotkeyKit"),
     ],
     targets: [
-        .target(name: "CurtainCore"),
+        .target(name: "BarnCore"),
         .executableTarget(
-            name: "Curtain",
+            name: "Barn",
             dependencies: [
-                "CurtainCore",
+                "BarnCore",
                 .product(name: "StatusItemKit", package: "StatusItemKit"),
                 .product(name: "HotkeyKit", package: "HotkeyKit"),
             ]
         ),
-        .testTarget(name: "CurtainCoreTests", dependencies: ["CurtainCore"]),
+        .testTarget(name: "BarnCoreTests", dependencies: ["BarnCore"]),
     ]
 )

@@ -1,14 +1,12 @@
 <h1 align="center">
-  <img src="docs/images/icon.png" width="120" alt="Curtain icon"><br>
-  Curtain
+  <img src="docs/mascot.png" width="160" alt="Barn mascot"><br>
+  Barn
 </h1>
 
 <p align="center">
   <b>Hide the menu bar icons you never click.</b><br>
   Click the barn to get them back — with their real menus, without moving a thing.
 </p>
-
-<p align="center"><img src="docs/mascot.png" width="160" alt="Curtain mascot, from the Menubarn widget library"></p>
 
 <p align="center">Part of the <a href="https://widgets.nicksmith.software">Menubarn</a> widget library.</p>
 
@@ -28,12 +26,12 @@
 mkdir -p ~/Code && cd ~/Code
 git clone https://github.com/nicholaspsmith/StatusItemKit.git
 git clone https://github.com/nicholaspsmith/HotkeyKit.git
-git clone https://github.com/nicholaspsmith/menubar-curtain.git
-cd menubar-curtain && ./install.sh
+git clone https://github.com/nicholaspsmith/menubar-barn.git
+cd menubar-barn && ./install.sh
 ```
 
 That builds it, drops it in `~/Applications`, and launches it. Grant Accessibility
-when prompted — it is how Curtain reads where icons sit and what hidden apps'
+when prompted — it is how Barn reads where icons sit and what hidden apps'
 menus contain.
 
 Then **⌘-drag the barn** so everything you want hidden sits to its left. Or let
@@ -53,8 +51,8 @@ fighting over the same icons will strand one.
 
 ![The menu-bar icon](docs/menubar-icon.png)
 
-The control is a barn: doors shut while the curtain is drawn, open while its
-menu of hidden icons is up or while the icons are revealed on the bar. It is drawn a little larger than a normal glyph on purpose,
+The control is the barn itself: doors shut while the icons are inside, open while its
+menu of hidden icons is up or while the icons are out on the bar. It is drawn a little larger than a normal glyph on purpose,
 since the other Menubarn characters are supposed to have come out of it. Prefer
 the original chevron? Right click ▸ Icon ▸ Chevron; the bar re-measures the
 handle's width on its own.
@@ -62,13 +60,13 @@ handle's width on its own.
 A hidden app's submenu is its **real menu**, read live while its icon sits
 off-screen — so a hidden app stays completely usable and nothing on your bar
 moves. Apps that publish no menu open directly instead; an app that only
-answers a real click (BetterDisplay) gets one: Curtain reveals the bar, clicks
+answers a real click (BetterDisplay) gets one: Barn reveals the bar, clicks
 its icon for you, and hides again when its menu closes. Hide an icon and unhide
 it later and it returns to the exact slot it left.
 
 ## Why it cannot lose an icon
 
-Curtain hides by **width**. A status item of its own grows leftward, sliding its
+Barn hides by **width**. A status item of its own grows leftward, sliding its
 neighbours off the display. Items to its right never move, and no other app's
 state is written.
 
@@ -78,10 +76,10 @@ icon vanished: the app was healthy, its item present, the accessibility API
 reporting a real 32×24 slot — but the slot sat nine points from the notch, and
 that sliver renders nothing. Ice had dragged it there and never checked, and
 quitting Ice made the same mistake in reverse, restoring three icons straight
-into the notch, all invisible. Curtain cannot do either, because it never moves
+into the notch, all invisible. Barn cannot do either, because it never moves
 an icon it did not just ask you about.
 
-So Curtain moves an icon only when you ask it to, once, and always reads back
+So Barn moves an icon only when you ask it to, once, and always reads back
 where it landed. Anything resting somewhere invisible gets named in the menu
 rather than silently disappearing.
 
@@ -89,18 +87,18 @@ rather than silently disappearing.
 
 - **The bar has a capacity.** Making an app visible when the strip is already full
   pushes something into the notch sliver, where it draws nothing — and on a full
-  bar the leftmost thing is Curtain's own handle, the control you would use to
-  fix it. So Curtain refuses to show an icon when the arithmetic says it will not
+  bar the leftmost thing is Barn's own handle, the control you would use to
+  fix it. So Barn refuses to show an icon when the arithmetic says it will not
   fit, and tells you how many points to free by hiding something else first. If
-  macOS reflows the bar unexpectedly and the handle is stranded anyway, Curtain
+  macOS reflows the bar unexpectedly and the handle is stranded anyway, Barn
   notices within a second and offers to hide the icon again. It still cannot
   create room.
 - **A very wide hidden block cannot all be revealed at once.** Showing an icon
   means revealing the block and dragging that icon across the line, and the
   block's far end can spill under the notch if more is hidden than the bar can
-  display. During the move Curtain's own handle and every StatusItemKit app
+  display. During the move Barn's own handle and every StatusItemKit app
   that runs a `YieldClient` give up their width, which is usually enough; if
-  the icon still sits under the notch, Curtain says so rather than dragging
+  the icon still sits under the notch, Barn says so rather than dragging
   blind. Moving other hidden icons across the line does not help — the total
   width left of the handle is unchanged — so the cure is fewer or narrower
   icons on the bar, or more apps that yield.
@@ -139,7 +137,7 @@ colour, and cooperative hiding so no icon strands another.
 | [MacRecorder](https://github.com/nicholaspsmith/MacRecorder) | Screen recording with system audio |
 | [Media Tracking Killer](https://github.com/nicholaspsmith/media-tracking-killer-menubar) | Kills Apple's media tracking daemons |
 | [Download Recycler](https://github.com/nicholaspsmith/download-recycler-menubar) | Sweeps stale files out of ~/Downloads |
-| **Curtain** | Hides a block of status icons by width, so it cannot strand one |
+| **Barn** | Hides a block of status icons by width, so it cannot strand one |
 
 | Framework | |
 |---|---|

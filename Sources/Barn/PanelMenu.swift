@@ -1,5 +1,5 @@
 import AppKit
-import CurtainCore
+import BarnCore
 
 /// The hidden icons, presented as a menu.
 ///

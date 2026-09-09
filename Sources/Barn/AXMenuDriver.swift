@@ -22,7 +22,7 @@ struct AXMenuRow {
 /// single icon. Verified end to end: rows read by name, a chosen row pressed,
 /// and the target app's handler fired.
 ///
-/// Needs only the Accessibility grant Curtain already holds — no Automation
+/// Needs only the Accessibility grant Barn already holds — no Automation
 /// permission, because nothing goes through System Events.
 enum AXMenuDriver {
     private static let timeout: Float = 1.0

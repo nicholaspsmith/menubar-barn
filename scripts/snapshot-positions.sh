@@ -2,7 +2,7 @@
 # Capture every "NSStatusItem Preferred Position" value on this machine and emit
 # a runnable restore script.
 #
-# Run this BEFORE quitting Ice, rearranging icons, or letting Curtain drag
+# Run this BEFORE quitting Ice, rearranging icons, or letting Barn drag
 # anything. macOS stores each status item's position in the OWNING app's
 # preferences, so a rearrangement is spread across dozens of domains and is
 # tedious to undo by hand; this makes undo a single command.

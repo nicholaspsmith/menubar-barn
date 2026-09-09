@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Build Curtain.app and symlink it into ~/Applications (rebuilds propagate;
+# Build Barn.app and symlink it into ~/Applications (rebuilds propagate;
 # SMAppService accepts a symlink there for Start-at-Login).
 set -euo pipefail
 
 SRC_DIR="$(cd "$(dirname "$0")" && pwd)"
-APP_NAME="Curtain.app"
+APP_NAME="Barn.app"
 
 "$SRC_DIR/scripts/build-app.sh"
 
@@ -16,7 +16,7 @@ open "$HOME/Applications/$APP_NAME"
 
 cat <<'EOF'
 
-Curtain is now running in the menu bar.
+Barn is now running in the menu bar.
 
 First-run setup
   1. Grant Accessibility when prompted (System Settings ▸ Privacy & Security ▸
