@@ -4,6 +4,7 @@ import OSLog
 import StatusItemKit
 
 private let arrangeLog = Logger(subsystem: "com.nicholaspsmith.Barn", category: "arrange")
+private let sweepLog = Logger(subsystem: "com.nicholaspsmith.Barn", category: "sweep")
 
 /// Barn — hides a contiguous block of menu-bar icons by widening a status
 /// item of its own, never by moving anyone else's.
@@ -120,9 +121,13 @@ final class App: NSObject, NSApplicationDelegate {
     private var menuPIDs: Set<pid_t> = []
     private var menuProbe: [pid_t: Bool] = [:]
     private var sweepInFlight = false
+    /// A sweep asked for while one is running is run afterwards, not dropped:
+    /// the later request is the one that knows the bar has moved.
+    private var sweepPending = false
 
     private func refreshSnapshots() {
-        guard AXMenuBar.isTrusted, !sweepInFlight else { return }
+        guard AXMenuBar.isTrusted else { return }
+        guard !sweepInFlight else { sweepPending = true; return }
         sweepInFlight = true
         let geometry = MenuBarGeometry.current()
         let ownPID = ProcessInfo.processInfo.processIdentifier
@@ -143,8 +148,21 @@ final class App: NSObject, NSApplicationDelegate {
                 self.menuProbe = probe
                 self.menuPIDs = withMenus
                 self.sweepInFlight = false
+                sweepLog.debug("swept: \(hidden.count, privacy: .public) hidden, \(stranded.count, privacy: .public) stranded, \(items.count, privacy: .public) items")
+                if self.sweepPending {
+                    self.sweepPending = false
+                    self.refreshSnapshots()
+                }
             }
         }
+    }
+
+    /// The sweep `applyState` starts on a hide reads the bar as the line
+    /// widens, before macOS has pushed the icons off — so it finds nothing
+    /// hidden, and the panel said "No hidden icons" until the next poll. Read
+    /// again once the bar has stopped moving.
+    private func refreshSnapshotsOnceSettled() {
+        afterBarSettles { [weak self] in self?.refreshSnapshots() }
     }
 
     private func applyState() {
@@ -343,6 +361,7 @@ final class App: NSObject, NSApplicationDelegate {
             // sibling restored too early had nowhere to land. Yielding by width
             // keeps every item in place, so there is nothing left to wait for.
             MenuBarYield.post(.init(state: .restore, token: peekToken, ttl: 0))
+            refreshSnapshotsOnceSettled()
         }
 
         rehideTimer?.invalidate()
@@ -355,6 +374,7 @@ final class App: NSObject, NSApplicationDelegate {
             guard let self, !self.isHidden else { return }
             self.isHidden = true
             self.applyState()
+            self.refreshSnapshotsOnceSettled()
         }
     }
 
