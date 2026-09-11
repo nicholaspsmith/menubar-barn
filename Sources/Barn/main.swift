@@ -274,6 +274,12 @@ final class App: NSObject, NSApplicationDelegate {
         var seen = Set<pid_t>()
         let apps = itemsSnapshot
             .filter { $0.pid != ownPID }
+            // One row per process, and Control Center is one process owning
+            // several items — Wi‑Fi, Bluetooth, the clock, itself. A single
+            // tick cannot say which, and the drag grabbed the clock, which
+            // macOS pins (measured 2026-09-10: didNotLand every time). System
+            // Settings ▸ Control Center already toggles each of those.
+            .filter { $0.bundleID != Self.controlCenterBundleID }
             .filter { seen.insert($0.pid).inserted }
             .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
 
@@ -390,6 +396,8 @@ final class App: NSObject, NSApplicationDelegate {
             rehideTimer = nil
         }
     }
+
+    private static let controlCenterBundleID = "com.apple.controlcenter"
 
     private final class AppRef: NSObject {
         let pid: pid_t
