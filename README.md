@@ -41,6 +41,19 @@ icon stays on the bar and unticking it puts it in the barn.
 Requires macOS 13+ and Swift 5.9. Run only one menu-bar manager at a time — two
 fighting over the same icons will strand one.
 
+### Start at Login
+
+Toggle it from the menu, or from the shell:
+
+```sh
+"$HOME/Applications/Barn.app/Contents/MacOS/Barn" --login on       # or: off, status
+```
+
+`install.sh` already runs this for you. Start at Login is `SMAppService.mainApp`, which can only
+register the calling process's own bundle — so nothing outside the app can turn
+it on, and the command has to be the *installed* binary. A bare `--login`, or
+`--login status`, only reports the current state and changes nothing.
+
 ## Using it
 
 | | |
