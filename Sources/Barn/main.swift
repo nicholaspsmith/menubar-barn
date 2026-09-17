@@ -97,6 +97,7 @@ final class App: NSObject, NSApplicationDelegate {
         panel = PanelMenu()
         panel.onOpenByRevealing = { [weak self] pid in self?.openByRevealing(pid: pid) }
         handle = Handle(controller: controller)
+        controller.button?.setAccessibilityIdentifier(Self.handleIdentifier)
         controller.start()
         settleThenApply()
 
@@ -174,11 +175,11 @@ final class App: NSObject, NSApplicationDelegate {
         // macOS drops it wherever it will go and shoves every other icon aside;
         // measured, it landed right of everything and hid the lot.
         guard hasSettled else {
-            line.show()
+            showLine()
             return
         }
         if isHidden {
-            line.hide()
+            hideLine()
         } else {
             // Ask the sibling apps for their slots *before* collapsing, so the
             // block has somewhere to land. Without this a reveal just slides the
@@ -190,14 +191,101 @@ final class App: NSObject, NSApplicationDelegate {
             // never leave their icons hidden. Refreshing it is what holds the
             // reveal open.
             MenuBarYield.post(.init(state: .yield, token: peekToken, ttl: Self.yieldTTL))
-            line.show()
+            showLine()
+        }
+    }
+
+    // MARK: - The line on macOS 27
+
+    static let handleIdentifier = "BarnHandle"
+
+    /// The hosted hide in progress or in place: the width tried and how many
+    /// times the agent has thrown the line back.
+    private struct HostedHide {
+        var width: CGFloat
+        var retries: Int
+        var verified: Bool
+    }
+    private var hostedHide: HostedHide?
+    private static let hostedRetries = 8
+    private static let hostedVerifyDelay: TimeInterval = 0.7
+
+    private func showLine() {
+        line.show()
+        hostedHide = nil
+    }
+
+    /// Widen the line. Before 27 that is one constant. On 27 the agent ejects
+    /// anything too wide, so the width is computed from where the line's own
+    /// slot ends and then read back: a line with no slot was ejected, and the
+    /// next try is narrower. An attempt already under way is left alone —
+    /// `applyState` runs on every poll, and the reveal is what resets it.
+    private func hideLine() {
+        guard AXHostedBar.isHosted else { line.hide(); return }
+        guard hostedHide == nil else { return }
+        let layout = AXHostedBar.layout()
+        let width = hostedHideWidth(in: layout)
+        hostedHide = HostedHide(width: width, retries: 0, verified: false)
+        arrangeLog.notice("hosted hide: line ends at x=\(Int(self.ownLineSlot(in: layout)?.frame.maxX ?? -1), privacy: .public); trying width \(Int(width), privacy: .public)")
+        line.hide(width: width)
+        verifyHostedHide()
+    }
+
+    /// Without the agent's tree — no Accessibility grant — there is no line
+    /// position to work from, and the half-width ceiling is the only number
+    /// left. It usually holds; the verify loop cannot run without the grant
+    /// either, so a wrong guess simply hides nothing until it is granted.
+    private func hostedHideWidth(in layout: HostedLayout?) -> CGFloat {
+        let display = layout?.barWidth ?? NSScreen.screens.first?.frame.width ?? 1600
+        let right = ownLineSlot(in: layout)?.frame.maxX ?? display
+        return HostedBar.hideWidth(lineRightEdge: right, displayWidth: display)
+    }
+
+    /// Our line in the agent's layout, by the identifier it carries — or, if
+    /// the agent does not pass identifiers through, by the width the line
+    /// currently asks for, which the handle never matches.
+    private func ownLineSlot(in layout: HostedLayout?) -> HostedSlot? {
+        let ours = layout?.slots(for: ProcessInfo.processInfo.processIdentifier) ?? []
+        if let named = ours.first(where: { $0.identifier == Line.identifier }) { return named }
+        let expected = line.width + HostedBar.slotPadding
+        return ours.first { abs($0.frame.width - expected) < 4 }
+    }
+
+    private func verifyHostedHide() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.hostedVerifyDelay) { [weak self] in
+            guard let self, var attempt = self.hostedHide, self.isHidden, !attempt.verified else { return }
+            guard let layout = AXHostedBar.layout() else {
+                // Nothing to check against; take the width as it stands.
+                attempt.verified = true
+                self.hostedHide = attempt
+                return
+            }
+            if let slot = self.ownLineSlot(in: layout) {
+                attempt.verified = true
+                self.hostedHide = attempt
+                arrangeLog.notice("hosted hide: line placed at \(Int(slot.frame.minX), privacy: .public)..\(Int(slot.frame.maxX), privacy: .public) after \(attempt.retries, privacy: .public) retries")
+                self.refreshSnapshots()
+                return
+            }
+            guard attempt.retries < Self.hostedRetries, attempt.width > BarnGeometry.showWidth else {
+                arrangeLog.error("hosted hide: line still ejected at \(Int(attempt.width), privacy: .public)pt; giving up")
+                attempt.verified = true
+                self.hostedHide = attempt
+                return
+            }
+            attempt.width = HostedBar.narrower(than: attempt.width)
+            attempt.retries += 1
+            self.hostedHide = attempt
+            arrangeLog.notice("hosted hide: ejected; retrying at \(Int(attempt.width), privacy: .public)pt")
+            self.line.hide(width: attempt.width)
+            self.verifyHostedHide()
         }
     }
 
     /// Stay narrow, let the menu bar place us, then apply the real state.
     private func settleThenApply() {
         hasSettled = false
-        line.show()
+        showLine()
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.settleDelay) { [weak self] in
             self?.hasSettled = true
             self?.applyState()
@@ -279,7 +367,7 @@ final class App: NSObject, NSApplicationDelegate {
             // tick cannot say which, and the drag grabbed the clock, which
             // macOS pins (measured 2026-09-10: didNotLand every time). System
             // Settings ▸ Control Center already toggles each of those.
-            .filter { $0.bundleID != Self.controlCenterBundleID }
+            .filter { $0.bundleID != Self.controlCenterBundleID && $0.bundleID != AXHostedBar.agentBundleID }
             .filter { seen.insert($0.pid).inserted }
             .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
 
@@ -289,7 +377,7 @@ final class App: NSObject, NSApplicationDelegate {
         }
 
         for app in apps {
-            let hidden = BarnGeometry.placement(of: app.frame, in: geometry) == .hidden
+            let hidden = app.placement(in: geometry) == .hidden
             let item = actionItem(app.name, #selector(toggleAppHidden(_:)))
             // A tick means the icon is on the bar; unticked means it is in the barn.
             item.state = hidden ? .off : .on
@@ -397,7 +485,7 @@ final class App: NSObject, NSApplicationDelegate {
         }
     }
 
-    private static let controlCenterBundleID = "com.apple.controlcenter"
+    static let controlCenterBundleID = "com.apple.controlcenter"
 
     private final class AppRef: NSObject {
         let pid: pid_t
@@ -422,7 +510,7 @@ final class App: NSObject, NSApplicationDelegate {
         arrangeLog.notice("request: \(app.isHidden ? "show" : "hide", privacy: .public) \(app.name, privacy: .public); curtain hidden=\(self.isHidden, privacy: .public)")
         // Showing needs room; hiding makes it. Check while the icons are hidden,
         // which is the layout the restored icon will actually have to fit into.
-        if app.isHidden, isHidden, let refusal = roomRefusal(forShowing: app) {
+        if app.isHidden, isHidden, !AXHostedBar.isHosted, let refusal = roomRefusal(forShowing: app) {
             report(refusal)
             return
         }
@@ -477,7 +565,7 @@ final class App: NSObject, NSApplicationDelegate {
             let target = target0
             let lineX = lineX0
             let handleX = handleX0
-            if app.isHidden, BarnGeometry.placement(of: target.frame, in: geometry) != .visible {
+            if app.isHidden, target.placement(in: geometry) != .visible {
                 let firstDrawable = geometry.usableMinX + geometry.deadZoneMargin
                 self.report(
                     .underNotch(name: app.name, at: target.frame.minX, over: firstDrawable - target.frame.minX),
@@ -558,7 +646,7 @@ final class App: NSObject, NSApplicationDelegate {
             guard let item = AXMenuBar.items()
                     .filter({ $0.pid == pid && $0.frame.width < 100 })
                     .max(by: { $0.frame.minX < $1.frame.minX }),
-                  BarnGeometry.placement(of: item.frame, in: geometry) == .visible
+                  item.placement(in: geometry) == .visible
             else {
                 arrangeLog.error("open by revealing: \(name, privacy: .public) icon not on screen after reveal")
                 self.toggle()
@@ -610,7 +698,7 @@ final class App: NSObject, NSApplicationDelegate {
         guard let target = items.first(where: { $0.pid == app.pid }) else { return nil }
         let onBar = items.filter { item in
             (item.pid != ownPID || item.frame.width < 100)
-                && BarnGeometry.placement(of: item.frame, in: geometry) != .hidden
+                && item.placement(in: geometry) != .hidden
         }
         guard let leftmost = onBar.min(by: { $0.frame.minX < $1.frame.minX }) else { return nil }
         let shortfall = BarnGeometry.shortfallToShow(
@@ -645,7 +733,7 @@ final class App: NSObject, NSApplicationDelegate {
             let ownPID = ProcessInfo.processInfo.processIdentifier
             let geometry = MenuBarGeometry.current()
             guard let chevron = AXMenuBar.items().first(where: { $0.pid == ownPID && $0.frame.width < 100 }),
-                  BarnGeometry.placement(of: chevron.frame, in: geometry) == .deadZone
+                  chevron.placement(in: geometry) == .deadZone
             else { return }
             let alert = NSAlert()
             alert.messageText = "Barn's chevron is now hidden by the notch"
@@ -746,7 +834,7 @@ final class App: NSObject, NSApplicationDelegate {
 
     @objc private func quit() {
         // Leave the bar as we found it rather than with the block off-screen.
-        line.show()
+        showLine()
         NSApp.terminate(nil)
     }
 }

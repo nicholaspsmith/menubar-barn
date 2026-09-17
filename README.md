@@ -38,8 +38,9 @@ Then **⌘-drag the barn** so everything you want hidden sits to its left. Or le
 the app do the dragging: right-click ▸ Visible Icons, where a tick means the
 icon stays on the bar and unticking it puts it in the barn.
 
-Requires macOS 13+ and Swift 5.9. Run only one menu-bar manager at a time — two
-fighting over the same icons will strand one.
+Requires macOS 13+ and Swift 5.9; macOS 27 needs the Accessibility grant for
+hiding itself, not just for the menus (see below). Run only one menu-bar
+manager at a time — two fighting over the same icons will strand one.
 
 ### Start at Login
 
@@ -97,6 +98,31 @@ So Barn moves an icon only when you ask it to, once, and always reads back
 where it landed. Anything resting somewhere invisible gets named in the menu
 rather than silently disappearing.
 
+### On macOS 27
+
+macOS 27 moved every status item into one system process, `MenuBarAgent`,
+which lays the whole bar out itself. The width trick still works, but the
+agent enforces limits it never documented: an item wider than half the display
+is thrown out of the layout rather than laid out, and so is any item whose left
+edge would land below about 143pt. Barn's old 2000pt line hit the first rule and
+hid nothing.
+
+Barn now sizes the line per bar — from where the agent says the line's own slot
+ends, kept under both ceilings — and reads the layout back: a line the agent
+ejected is narrowed and tried again. The icons to its left then fall below the
+agent's floor and are dropped from the bar entirely; the one or two nearest the
+line can instead land in the system's own « overflow menu, which is also off
+the bar. Either way they stay in Barn's panel with their live menus, since an
+app's menu can still be read while its icon is gone.
+
+Two visible differences. The system's « button appears at the right end of the
+line, just left of the barn — the agent shows it whenever anything is off the
+bar and it cannot be suppressed. And because it is the agent, not each app,
+that says where an icon is, Barn needs Accessibility on 27 to know where its
+own line ends; without the grant it falls back to the half-width ceiling, which
+usually holds. The old capacity warnings ("no room to show…") do not apply on
+27: an icon that does not fit goes into the « menu, not into the notch.
+
 ## Known limits
 
 - **The bar has a capacity.** Making an app visible when the strip is already full
@@ -121,6 +147,9 @@ rather than silently disappearing.
 - **Shortcuts depend on the app.** Rows show key equivalents where an app sets
   them; Rectangle registers global hotkeys instead, so it publishes none.
 - **Main display only.**
+- **On macOS 27, positions live with the agent.** `NSStatusItem Preferred
+  Position` is honoured only for a brand-new item, so `snapshot-positions.sh`
+  captures nothing useful there; ⌘-drag is the way to rearrange.
 
 ## Design notes
 

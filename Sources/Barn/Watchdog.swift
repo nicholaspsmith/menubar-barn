@@ -24,7 +24,7 @@ enum Watchdog {
         var seen = Set<String>()
         return AXMenuBar.items()
             .filter { $0.pid != ownPID }
-            .filter { BarnGeometry.placement(of: $0.frame, in: geometry) == .deadZone }
+            .filter { $0.placement(in: geometry) == .deadZone }
             // One warning per app: several items from one app say nothing extra.
             .filter { seen.insert($0.name).inserted }
     }

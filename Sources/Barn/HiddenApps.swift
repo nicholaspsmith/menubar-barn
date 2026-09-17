@@ -18,7 +18,7 @@ enum HiddenApps {
         var seen = Set<pid_t>()
         return AXMenuBar.items()
             .filter { $0.pid != ownPID }
-            .filter { BarnGeometry.placement(of: $0.frame, in: geometry) == .hidden }
+            .filter { $0.placement(in: geometry) == .hidden }
             .filter { seen.insert($0.pid).inserted }
             .map { item in
                 HiddenApp(

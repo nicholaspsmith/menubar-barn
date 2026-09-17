@@ -7,11 +7,29 @@ struct MenuBarItem {
     let name: String
     let bundleID: String?
     let pid: pid_t
-    let frame: ItemFrame
+    var frame: ItemFrame
+    /// On macOS 27, the agent's verdict on where this item is; nil before,
+    /// when the frame alone says. An ejected item has no frame at all, so it
+    /// carries an off-screen sentinel that the geometry reads the same way.
+    var hostPlacement: Placement? = nil
 
     /// Stable across relaunches, unlike a pid — what remembered placements are
     /// filed under. Falls back to the name for apps with no bundle identifier.
     var key: String { bundleID ?? name }
+
+    /// Where the item is. Every classification goes through here so the two
+    /// sources of truth — the agent on 27, the frame before it — never get
+    /// mixed within one decision.
+    func placement(in geometry: MenuBarGeometry) -> Placement {
+        hostPlacement ?? BarnGeometry.placement(of: frame, in: geometry)
+    }
+
+    /// The frame an ejected item is given: entirely left of x=0, which is what
+    /// "hidden" meant before 27, so sorting and reachability checks written
+    /// against real frames keep working.
+    static func ejectedFrame(width: CGFloat) -> ItemFrame {
+        ItemFrame(minX: -width - 1, width: width)
+    }
 }
 
 /// Reads every app's status item position through the accessibility API.
@@ -57,6 +75,64 @@ enum AXMenuBar {
     /// appeared to do nothing until it finished (2026-09-06).
     static func items() -> [MenuBarItem] {
         guard isTrusted else { return [] }
+        let perApp = perAppItems()
+        guard AXHostedBar.isHosted else { return dropPhantoms(perApp) }
+        guard let layout = AXHostedBar.layout() else {
+            // The agent could not be read this time. Its slots are the only
+            // trustworthy positions, so rather than serve stale per-app frames
+            // as if they were real, say nothing until the next sweep.
+            return []
+        }
+        return hostedItems(perApp: perApp, layout: layout)
+    }
+
+    /// Merge what each app claims with what the agent laid out.
+    ///
+    /// The agent is authoritative for everything it placed or overflowed: one
+    /// item per slot, with the slot's real frame. An app whose own tree lists
+    /// an item but which has no slot has been ejected — off the bar, in the
+    /// « menu or not — and is reported hidden with the width its own tree
+    /// gives, since that is all that is left of it.
+    static func hostedItems(perApp: [MenuBarItem], layout: HostedLayout) -> [MenuBarItem] {
+        var result: [MenuBarItem] = []
+        var claimed: [pid_t: [MenuBarItem]] = [:]
+        // The agent and Control Center publish extras trees of their own —
+        // clock, Wi‑Fi, and the rest — that the agent never lays out as
+        // slots. Without a slot they would read as ejected and turn up in the
+        // panel as hidden apps.
+        let system: Set<String?> = [AXHostedBar.agentBundleID, App.controlCenterBundleID]
+        for item in perApp where !system.contains(item.bundleID) {
+            claimed[item.pid, default: []].append(item)
+        }
+
+        for slot in layout.slots {
+            guard let app = NSRunningApplication(processIdentifier: slot.pid) else { continue }
+            result.append(MenuBarItem(
+                name: app.localizedName ?? "Unknown",
+                bundleID: app.bundleIdentifier,
+                pid: slot.pid,
+                frame: slot.frame,
+                hostPlacement: layout.placement(of: slot)
+            ))
+        }
+        // An app can own several items (BetterDisplay does), and the agent can
+        // have ejected some of them but not others; whatever it did not place
+        // is reported once each, hidden.
+        for (pid, items) in claimed {
+            let placed = layout.slots(for: pid).count
+            for item in items.dropFirst(placed) {
+                var ejected = item
+                ejected.frame = MenuBarItem.ejectedFrame(width: item.frame.width)
+                ejected.hostPlacement = .hidden
+                result.append(ejected)
+            }
+        }
+        return result
+    }
+
+    /// Every app's own account of its status items. Right about which apps
+    /// have one and how wide; on 27, wrong about where.
+    private static func perAppItems() -> [MenuBarItem] {
         let now = Date()
         let apps = NSWorkspace.shared.runningApplications.filter { app in
             guard app.activationPolicy != .prohibited, !app.isTerminated else { return false }
@@ -96,7 +172,7 @@ enum AXMenuBar {
         noBarUntil = noBarUntil.filter { alive.contains($0.key) }
         lock.unlock()
 
-        return dropPhantoms(perApp.flatMap { $0 })
+        return perApp.flatMap { $0 }
     }
 
     /// Remove items that cannot really be on the bar: a slot that overlaps
