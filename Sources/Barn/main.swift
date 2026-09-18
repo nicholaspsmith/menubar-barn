@@ -21,6 +21,9 @@ final class App: NSObject, NSApplicationDelegate {
     private var handle: Handle!
     private var panel: PanelMenu!
     private let line = Line()
+    /// The second line macOS 27 needs, created only where the agent runs:
+    /// on older systems it would just be a 17pt gap in the bar.
+    private var lineB: Line?
     private var isHidden = true
     /// False until the menu bar has had a chance to place our narrow items.
     private var hasSettled = false
@@ -71,6 +74,18 @@ final class App: NSObject, NSApplicationDelegate {
         for (key, value) in Self.defaults where UserDefaults.standard.object(forKey: key) == nil {
             UserDefaults.standard.set(value, forKey: key)
         }
+        if AXHostedBar.isHosted {
+            // B goes immediately left of A: the agent honours a preferred
+            // position for a brand-new name, measured from the trailing
+            // edge, so A's own plus its narrow slot lands B beside it. If
+            // the user has since dragged A, `placeSecondLine` fixes it up.
+            let keyB = "NSStatusItem Preferred Position \(Line.secondIdentifier)"
+            if UserDefaults.standard.object(forKey: keyB) == nil {
+                let a = UserDefaults.standard.double(forKey: "NSStatusItem Preferred Position BarnLine")
+                UserDefaults.standard.set(a + BarnGeometry.showWidth + HostedBar.slotPadding, forKey: keyB)
+            }
+            lineB = Line(autosaveName: Line.secondIdentifier, identifier: Line.secondIdentifier)
+        }
 
         // One attached menu, built per click: the hidden-icons panel on a left
         // click, the management menu on a right or control click. Attaching
@@ -107,6 +122,23 @@ final class App: NSObject, NSApplicationDelegate {
             name: NSApplication.didChangeScreenParametersNotification,
             object: nil
         )
+        // The band the agent shows its « for starts at the frontmost app's
+        // menus, so the split between the two lines follows the frontmost app.
+        NSWorkspace.shared.notificationCenter.addObserver(
+            self,
+            selector: #selector(frontmostAppChanged),
+            name: NSWorkspace.didActivateApplicationNotification,
+            object: nil
+        )
+    }
+
+    @objc private func frontmostAppChanged() {
+        guard AXHostedBar.isHosted, isHidden, hasSettled else { return }
+        // Give the new app a moment to install its menu bar before measuring it.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+            guard let self, self.isHidden, self.hasSettled else { return }
+            self.hideLine()
+        }
     }
 
     // MARK: - Barn state
@@ -118,6 +150,8 @@ final class App: NSObject, NSApplicationDelegate {
     /// shut whenever another app was frontmost.
     private var hiddenSnapshot: [HiddenApp] = []
     private var strandedSnapshot: [MenuBarItem] = []
+    /// Stacked on the agent's « rather than dropped: hidden, but not ours.
+    private var overflowedSnapshot: [MenuBarItem] = []
     private var itemsSnapshot: [MenuBarItem] = []
     private var menuPIDs: Set<pid_t> = []
     private var menuProbe: [pid_t: Bool] = [:]
@@ -146,6 +180,8 @@ final class App: NSObject, NSApplicationDelegate {
                 self.itemsSnapshot = items
                 self.hiddenSnapshot = hidden
                 self.strandedSnapshot = stranded
+                self.overflowedSnapshot = items.filter { $0.pid != ownPID && $0.hostPlacement == .hidden && $0.frame.minX > 0 }
+                    .filter { $0.bundleID != Self.controlCenterBundleID && $0.bundleID != AXHostedBar.agentBundleID }
                 self.menuProbe = probe
                 self.menuPIDs = withMenus
                 self.sweepInFlight = false
@@ -195,91 +231,208 @@ final class App: NSObject, NSApplicationDelegate {
         }
     }
 
-    // MARK: - The line on macOS 27
+    // MARK: - The lines on macOS 27
 
     static let handleIdentifier = "BarnHandle"
 
-    /// The hosted hide in progress or in place: the width tried and how many
-    /// times the agent has thrown the line back.
+    /// The hosted hide in place or in progress: the split applied, what it
+    /// was computed from, and how many times the agent has disagreed.
     private struct HostedHide {
-        var width: CGFloat
+        var split: HostedBar.Split
+        var rightEdge: CGFloat
+        var boundary: CGFloat
+        var floor: CGFloat
+        /// Added to the boundary margin when a « still showed — the band's
+        /// start was further right than assumed on this bar.
+        var boundaryBump: CGFloat
         var retries: Int
         var verified: Bool
     }
     private var hostedHide: HostedHide?
-    private static let hostedRetries = 8
+    private static let hostedRetries = 4
     private static let hostedVerifyDelay: TimeInterval = 0.7
+    /// Collapses tried against one boundary. A drag that keeps failing
+    /// must not be retried on every poll.
+    private var collapseAttempts = 0
+    private var collapseBoundary: CGFloat = 0
+    private static let collapseAttemptLimit = 3
 
     private func showLine() {
         line.show()
+        lineB?.show()
         hostedHide = nil
     }
 
-    /// Widen the line. Before 27 that is one constant. On 27 the agent ejects
-    /// anything too wide, so the width is computed from where the line's own
-    /// slot ends and then read back: a line with no slot was ejected, and the
-    /// next try is narrower. An attempt already under way is left alone —
-    /// `applyState` runs on every poll, and the reveal is what resets it.
+    /// Widen the lines. Before 27 that is one constant on one line. On 27
+    /// there are two: A from its own right edge down to just past the
+    /// frontmost app's menus, B from there down to below the agent's floor,
+    /// so that everything left of B is dropped from the bar without the
+    /// agent showing its «. Runs on every poll and app switch; when the
+    /// numbers have not changed it does nothing.
     private func hideLine() {
-        guard AXHostedBar.isHosted else { line.hide(); return }
-        guard hostedHide == nil else { return }
+        guard AXHostedBar.isHosted, let lineB else { line.hide(); return }
+        if let attempt = hostedHide, !attempt.verified { return }
+
         let layout = AXHostedBar.layout()
-        let width = hostedHideWidth(in: layout)
-        hostedHide = HostedHide(width: width, retries: 0, verified: false)
-        arrangeLog.notice("hosted hide: line ends at x=\(Int(self.ownLineSlot(in: layout)?.frame.maxX ?? -1), privacy: .public); trying width \(Int(width), privacy: .public)")
-        line.hide(width: width)
+        let display = layout?.barWidth ?? NSScreen.screens.first?.frame.width ?? 1600
+        let rightEdge = ownLineSlot(in: layout)?.frame.maxX ?? hostedHide?.rightEdge ?? display
+        let front = Self.frontmostMenus()
+        let boundary = front?.menusRightEdge ?? display / 2
+        let floor = front.map { HostedBar.floor(appNameRightEdge: $0.appNameRightEdge) } ?? HostedBar.ejectionFloor
+
+        if let current = hostedHide, current.verified {
+            // Same bar, same app: leave it alone — unless a « has appeared
+            // since (something dragged between the lines, a menu that grew),
+            // in which case the verify loop gets another go, up to its limit.
+            let same = abs(current.rightEdge - rightEdge) < 8 && abs(current.boundary - boundary) < 8
+                && abs(current.floor - floor) < 8
+            if same, layout?.chevron == nil || current.retries >= Self.hostedRetries { return }
+        }
+        // Nudges earned against one situation — this app, this edge — do
+        // not carry to another.
+        let sameSituation = hostedHide.map {
+            $0.boundary == boundary && $0.floor == floor && abs($0.rightEdge - rightEdge) < 8
+        } ?? false
+        let bump = sameSituation ? (hostedHide?.boundaryBump ?? 0) : 0
+        let retries = sameSituation ? (hostedHide?.retries ?? 0) : 0
+
+        if HostedBar.needsCollapse(lineRightEdge: rightEdge, boundary: boundary + bump) {
+            collapse(rightEdge: rightEdge, boundary: boundary)
+            return
+        }
+        let split = HostedBar.split(lineRightEdge: rightEdge, boundary: boundary + bump, floor: floor - bump / 2, displayWidth: display)
+        hostedHide = HostedHide(split: split, rightEdge: rightEdge, boundary: boundary, floor: floor,
+                                boundaryBump: bump, retries: retries, verified: false)
+        arrangeLog.notice("hosted hide: A ends at x=\(Int(rightEdge), privacy: .public), menus end at \(Int(boundary), privacy: .public), floor \(Int(floor), privacy: .public); A=\(Int(split.a), privacy: .public) B=\(Int(split.b), privacy: .public)")
+        line.hide(width: split.a)
+        lineB.hide(width: split.b)
         verifyHostedHide()
     }
 
-    /// Without the agent's tree — no Accessibility grant — there is no line
-    /// position to work from, and the half-width ceiling is the only number
-    /// left. It usually holds; the verify loop cannot run without the grant
-    /// either, so a wrong guess simply hides nothing until it is granted.
-    private func hostedHideWidth(in layout: HostedLayout?) -> CGFloat {
-        let display = layout?.barWidth ?? NSScreen.screens.first?.frame.width ?? 1600
-        let right = ownLineSlot(in: layout)?.frame.maxX ?? display
-        return HostedBar.hideWidth(lineRightEdge: right, displayWidth: display)
+    /// The frontmost app's menu bar: where its name ends and where its last
+    /// menu ends. Nil without Accessibility or when the app answers nothing.
+    static func frontmostMenus() -> AXHostedBar.MenuEdges? {
+        guard AXMenuBar.isTrusted, let front = NSWorkspace.shared.frontmostApplication else { return nil }
+        return AXHostedBar.menuEdges(ofPID: front.processIdentifier)
     }
 
-    /// Our line in the agent's layout, by the identifier it carries — or, if
-    /// the agent does not pass identifiers through, by the width the line
-    /// currently asks for, which the handle never matches.
-    private func ownLineSlot(in layout: HostedLayout?) -> HostedSlot? {
-        let ours = layout?.slots(for: ProcessInfo.processInfo.processIdentifier) ?? []
-        if let named = ours.first(where: { $0.identifier == Line.identifier }) { return named }
-        let expected = line.width + HostedBar.slotPadding
-        return ours.first { abs($0.frame.width - expected) < 4 }
+    /// One of our items in the agent's layout, by the identifier it carries.
+    private func ownSlot(_ identifier: String, in layout: HostedLayout?) -> HostedSlot? {
+        layout?.slots(for: ProcessInfo.processInfo.processIdentifier).first { $0.identifier == identifier }
     }
 
+    private func ownLineSlot(in layout: HostedLayout?) -> HostedSlot? { ownSlot(Line.identifier, in: layout) }
+
+    /// Read the layout back. Right means: A has a slot, B has none, and
+    /// there is no «. A « — or a B with a slot — means the band starts
+    /// further right, or the floor sits higher, than assumed; nudge and retry.
     private func verifyHostedHide() {
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.hostedVerifyDelay) { [weak self] in
             guard let self, var attempt = self.hostedHide, self.isHidden, !attempt.verified else { return }
             guard let layout = AXHostedBar.layout() else {
-                // Nothing to check against; take the width as it stands.
                 attempt.verified = true
                 self.hostedHide = attempt
                 return
             }
-            if let slot = self.ownLineSlot(in: layout) {
+            let aPlaced = self.ownLineSlot(in: layout) != nil
+            let bPlaced = self.ownSlot(Line.secondIdentifier, in: layout) != nil
+            if aPlaced, !bPlaced, layout.chevron == nil {
                 attempt.verified = true
                 self.hostedHide = attempt
-                arrangeLog.notice("hosted hide: line placed at \(Int(slot.frame.minX), privacy: .public)..\(Int(slot.frame.maxX), privacy: .public) after \(attempt.retries, privacy: .public) retries")
+                arrangeLog.notice("hosted hide: clean after \(attempt.retries, privacy: .public) retries")
                 self.refreshSnapshots()
                 return
             }
-            guard attempt.retries < Self.hostedRetries, attempt.width > BarnGeometry.showWidth else {
-                arrangeLog.error("hosted hide: line still ejected at \(Int(attempt.width), privacy: .public)pt; giving up")
+            if attempt.split.bCapped {
+                // Nothing to retry: the band is wider than half the bar for
+                // this app, and B starts inside it whatever we do.
                 attempt.verified = true
+                attempt.retries = Self.hostedRetries
                 self.hostedHide = attempt
+                arrangeLog.notice("hosted hide: menus end at \(Int(attempt.boundary), privacy: .public); the band is wider than half the bar, so the « stays for this app")
+                self.refreshSnapshots()
                 return
             }
-            attempt.width = HostedBar.narrower(than: attempt.width)
+            guard attempt.retries < Self.hostedRetries else {
+                arrangeLog.error("hosted hide: still showing a « (A placed=\(aPlaced, privacy: .public), B placed=\(bPlaced, privacy: .public)); giving up")
+                attempt.verified = true
+                self.hostedHide = attempt
+                self.refreshSnapshots()
+                return
+            }
+            // A « with B dropped means A is in the band: move the split
+            // right. B still placed means the floor is higher than assumed:
+            // B needs to reach further down, which the bump also buys it.
+            attempt.boundaryBump += bPlaced ? 8 : 16
             attempt.retries += 1
+            attempt.split = HostedBar.split(lineRightEdge: attempt.rightEdge,
+                                            boundary: attempt.boundary + attempt.boundaryBump,
+                                            floor: attempt.floor - attempt.boundaryBump / 2,
+                                            displayWidth: layout.barWidth)
             self.hostedHide = attempt
-            arrangeLog.notice("hosted hide: ejected; retrying at \(Int(attempt.width), privacy: .public)pt")
-            self.line.hide(width: attempt.width)
+            arrangeLog.notice("hosted hide: « still showing; retrying with A=\(Int(attempt.split.a), privacy: .public) B=\(Int(attempt.split.b), privacy: .public)")
+            self.line.hide(width: attempt.split.a)
+            self.lineB?.hide(width: attempt.split.b)
             self.verifyHostedHide()
         }
+    }
+
+    // MARK: - Collapse
+
+    /// The bar is full for the frontmost app: A cannot sit right of the
+    /// app's menus. Do what the agent would, but into the barn: hide the
+    /// leftmost visible icon that is not ours, and check again once that
+    /// has settled. Persistent, like any hide; Visible Icons undoes it.
+    private func collapse(rightEdge: CGFloat, boundary: CGFloat) {
+        if collapseBoundary != boundary { collapseBoundary = boundary; collapseAttempts = 0 }
+        guard collapseAttempts < Self.collapseAttemptLimit else { return }
+        // The arrange borrows the menu bar, and with it the keyboard, for a
+        // second or two. Not while the user is in the middle of typing; the
+        // next poll asks again.
+        let sinceKey = CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: .keyDown)
+        guard sinceKey > 2 else { return }
+        let ownPID = ProcessInfo.processInfo.processIdentifier
+        let geometry = MenuBarGeometry.current()
+        // Whatever is leftmost among the icons the agent still has a slot
+        // for — placed, or already stacked on its « — is what the agent
+        // would take first, and what we take instead. Not filtered against
+        // A's edge: while the bar is over capacity the agent shuffles A about,
+        // and the snapshot's frames may predate the shuffle.
+        let items = itemsSnapshot.isEmpty ? AXMenuBar.items() : itemsSnapshot
+        let candidates = items
+            .filter { $0.pid != ownPID && $0.bundleID != Self.controlCenterBundleID && $0.bundleID != AXHostedBar.agentBundleID }
+            .filter { $0.frame.minX > 0 && $0.placement(in: geometry) != .deadZone }
+            .sorted { $0.frame.minX < $1.frame.minX }
+        guard let victim = candidates.first else {
+            arrangeLog.error("collapse: bar is full for menus ending at \(Int(boundary), privacy: .public) but nothing left to hide")
+            return
+        }
+        collapseAttempts += 1
+        arrangeLog.notice("collapse: menus end at \(Int(boundary), privacy: .public), A ends at \(Int(rightEdge), privacy: .public); hiding \(victim.name, privacy: .public)")
+        let ref = AppRef(pid: victim.pid, name: victim.name, isHidden: false)
+        let item = NSMenuItem()
+        item.representedObject = ref
+        // Off this turn: the arrange reveals, which flips the state this
+        // call was reached from.
+        DispatchQueue.main.async { [weak self] in self?.toggleAppHidden(item) }
+    }
+
+    // MARK: - The handle beside A
+
+    /// Barn's « should be the leftmost visible thing, where the agent's own
+    /// would be. If icons sit between A and the handle on launch, drag the
+    /// handle up against A once.
+    private func placeHandleBesideLine() {
+        guard AXHostedBar.isHosted, let layout = AXHostedBar.layout(),
+              let a = ownLineSlot(in: layout), let handle = ownSlot(Self.handleIdentifier, in: layout)
+        else { return }
+        let between = layout.slots.filter { $0.frame.minX >= a.frame.maxX - 1 && $0.frame.maxX <= handle.frame.minX + 1 && $0.pid != ProcessInfo.processInfo.processIdentifier }
+        // Left of A the handle would be hidden along with the block — the one
+        // arrangement that takes the control away.
+        let leftOfLine = handle.frame.maxX <= a.frame.minX + 1
+        guard !between.isEmpty || leftOfLine else { return }
+        arrangeLog.notice("handle: \(between.count, privacy: .public) icon(s) between A and the handle (left of A: \(leftOfLine, privacy: .public)); moving the handle beside A")
+        Arranger.dragOwn(fromX: handle.frame.minX + handle.frame.width / 2, toX: a.frame.maxX + 4)
     }
 
     /// Stay narrow, let the menu bar place us, then apply the real state.
@@ -287,9 +440,25 @@ final class App: NSObject, NSApplicationDelegate {
         hasSettled = false
         showLine()
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.settleDelay) { [weak self] in
-            self?.hasSettled = true
-            self?.applyState()
+            guard let self else { return }
+            self.placeHandleBesideLine()
+            self.placeSecondLine()
+            self.hasSettled = true
+            self.applyState()
         }
+    }
+
+    /// B belongs immediately left of A. A brand-new item lands where its
+    /// seeded position says, which is right for a fresh install; after the
+    /// user has dragged A, or on the first launch of this version, it may
+    /// not be, so read where it landed and drag it into place if need be.
+    private func placeSecondLine() {
+        guard AXHostedBar.isHosted, let layout = AXHostedBar.layout(),
+              let a = ownLineSlot(in: layout), let b = ownSlot(Line.secondIdentifier, in: layout)
+        else { return }
+        guard abs(b.frame.maxX - a.frame.minX) > 2 else { return }
+        arrangeLog.notice("second line: at \(Int(b.frame.minX), privacy: .public), A at \(Int(a.frame.minX), privacy: .public); moving B beside A")
+        Arranger.dragOwn(fromX: b.frame.minX + b.frame.width / 2, toX: a.frame.minX - 4)
     }
 
     /// A dock, undock or resolution change re-places every item, so go narrow and
@@ -308,6 +477,13 @@ final class App: NSObject, NSApplicationDelegate {
         if AXMenuBar.isTrusted {
             for item in strandedSnapshot {
                 menu.addItem(disabledItem("⚠ \(item.name) is in the notch dead zone"))
+            }
+            // On 27 an icon can end up in the agent's own « — dragged between
+            // Barn's two lines, usually. It is off the bar, but not by Barn's
+            // doing, and the « it brings with it is the thing Barn exists to
+            // replace; say so rather than quietly fighting the drag.
+            for item in overflowedSnapshot {
+                menu.addItem(disabledItem("⚠ \(item.name) is in the system « menu — ⌘-drag it right of Barn's «"))
             }
         } else {
             menu.addItem(actionItem("⚠ Grant Accessibility…", #selector(grantTrust)))
@@ -443,19 +619,11 @@ final class App: NSObject, NSApplicationDelegate {
     /// the icon itself says which way round things are.
     @objc private func toggle() {
         isHidden.toggle()
-        if !isHidden { peekToken = UUID().uuidString }
-
-        applyState()
         if isHidden {
-            // Widen the line first, then hand the width back — both in the same
-            // turn of the run loop, so the icons return together rather than the
-            // bar visibly filling in twice.
-            //
-            // This used to wait 0.6s, back when yielding hid items outright and a
-            // sibling restored too early had nowhere to land. Yielding by width
-            // keeps every item in place, so there is nothing left to wait for.
-            MenuBarYield.post(.init(state: .restore, token: peekToken, ttl: 0))
-            refreshSnapshotsOnceSettled()
+            rehide()
+        } else {
+            peekToken = UUID().uuidString
+            applyState()
         }
 
         rehideTimer?.invalidate()
@@ -467,8 +635,30 @@ final class App: NSObject, NSApplicationDelegate {
         ) { [weak self] _ in
             guard let self, !self.isHidden else { return }
             self.isHidden = true
-            self.applyState()
-            self.refreshSnapshotsOnceSettled()
+            self.rehide()
+        }
+    }
+
+    /// End a reveal: hand the yielded width back and widen the line(s).
+    ///
+    /// Before 27 the two go in the same turn of the run loop, so the icons
+    /// return together rather than the bar visibly filling in twice. On 27
+    /// the order flips and there is a pause between: the lines are sized
+    /// from where A's slot ends, and while the siblings are still narrow
+    /// that edge sits too far right by their width — the first split then
+    /// puts A in the band and the « flashes until the retries catch up.
+    private func rehide() {
+        MenuBarYield.post(.init(state: .restore, token: peekToken, ttl: 0))
+        if AXHostedBar.isHosted {
+            handle.draw(hidden: true, style: handleStyle)
+            afterBarSettles(cap: 1.0) { [weak self] in
+                guard let self, self.isHidden else { return }
+                self.applyState()
+                self.refreshSnapshotsOnceSettled()
+            }
+        } else {
+            applyState()
+            refreshSnapshotsOnceSettled()
         }
     }
 
@@ -527,10 +717,11 @@ final class App: NSObject, NSApplicationDelegate {
         // milliseconds later, and a drag started while the bar is still reflowing
         // grabs one thing and drops another. "Settled" is two consecutive reads
         // that agree; a cap keeps a wedged app from stalling the arrange.
-        afterBarSettles { [weak self] in
+        withRoomToArrange { [weak self] in
             guard let self else { return }
             arrangeLog.notice("bar settled; arranging \(app.name, privacy: .public)")
             defer {
+                self.giveBackMenuBar()
                 if wasHidden, !self.isHidden {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { self.toggle() }
                 }
@@ -640,7 +831,7 @@ final class App: NSObject, NSApplicationDelegate {
         // Not a timed reveal: it ends when the user is done with the menu.
         rehideTimer?.invalidate()
         rehideTimer = nil
-        afterBarSettles { [weak self] in
+        withRoomToArrange { [weak self] in
             guard let self else { return }
             let geometry = MenuBarGeometry.current()
             guard let item = AXMenuBar.items()
@@ -649,10 +840,14 @@ final class App: NSObject, NSApplicationDelegate {
                   item.placement(in: geometry) == .visible
             else {
                 arrangeLog.error("open by revealing: \(name, privacy: .public) icon not on screen after reveal")
+                self.giveBackMenuBar()
                 self.toggle()
                 self.reportMissing(name, reason: "Its icon could not be brought on screen to click it — too many icons are hidden for the bar to reveal them all.")
                 return
             }
+            // The click goes to the app's icon, so the bar can go back first;
+            // the icon keeps its place either way.
+            self.giveBackMenuBar()
             Arranger.click(atX: item.frame.minX + item.frame.width / 2)
             arrangeLog.notice("open by revealing: clicked \(name, privacy: .public) at x=\(Int(item.frame.minX), privacy: .public)")
             self.rehideWhenDone(pid: pid, seen: false, deadline: Date().addingTimeInterval(120))
@@ -674,6 +869,57 @@ final class App: NSObject, NSApplicationDelegate {
             }
             self.rehideWhenDone(pid: pid, seen: nowSeen, deadline: deadline, started: started)
         }
+    }
+
+    // MARK: - Room to arrange
+
+    /// Run `work` once the revealed bar has settled — and, on 27, once it
+    /// fits.
+    ///
+    /// A drag is only deterministic while everything it touches is placed.
+    /// When the frontmost app's menus leave no room for the revealed block,
+    /// the agent stacks the leading items on its « at one set of
+    /// coordinates, and a drag there grabs and drops whatever it likes:
+    /// measured on 2026-09-17, a collapse of KeyLight took Rectangle and
+    /// Claude Usage with it. So if the settled reveal shows a «, Barn takes
+    /// the menu bar for itself — a regular app for a moment, whose bar is
+    /// one word wide — lets the agent lay everything out, and only then
+    /// arranges. `giveBackMenuBar` returns focus to the app that had it.
+    private func withRoomToArrange(_ work: @escaping () -> Void) {
+        afterBarSettles { [weak self] in
+            guard let self else { return work() }
+            guard AXHostedBar.isHosted, AXHostedBar.layout()?.chevron != nil else { return work() }
+            arrangeLog.notice("reveal does not fit the frontmost app's menus; taking the menu bar to arrange")
+            self.takeMenuBar()
+            self.afterBarSettles(cap: 1.5, work)
+        }
+    }
+
+    private var lentBy: NSRunningApplication?
+
+    private func takeMenuBar() {
+        guard lentBy == nil else { return }
+        lentBy = NSWorkspace.shared.frontmostApplication
+        if NSApp.mainMenu == nil {
+            // The app menu's title is the bundle's name, whatever this says.
+            let bar = NSMenu()
+            let app = NSMenuItem(title: "Barn", action: nil, keyEquivalent: "")
+            app.submenu = NSMenu(title: "Barn")
+            bar.addItem(app)
+            NSApp.mainMenu = bar
+        }
+        NSApp.setActivationPolicy(.regular)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    private func giveBackMenuBar() {
+        guard let previous = lentBy else { return }
+        lentBy = nil
+        NSApp.setActivationPolicy(.accessory)
+        if #available(macOS 14, *) {
+            NSApp.yieldActivation(to: previous)
+        }
+        previous.activate()
     }
 
     // MARK: - Capacity
@@ -833,8 +1079,10 @@ final class App: NSObject, NSApplicationDelegate {
     @objc private func toggleLogin() { LoginItem.toggle() }
 
     @objc private func quit() {
-        // Leave the bar as we found it rather than with the block off-screen.
+        // Leave the bar as we found it rather than with the block off-screen,
+        // and the siblings at their width rather than waiting out the TTL.
         showLine()
+        MenuBarYield.post(.init(state: .restore, token: peekToken, ttl: 0))
         NSApp.terminate(nil)
     }
 }

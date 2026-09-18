@@ -27,13 +27,19 @@ final class Line {
     /// Readable through the agent's tree, so the line can be told from the
     /// handle by name rather than by guessing from widths.
     static let identifier = "BarnLine"
+    /// The second line macOS 27 needs, immediately left of the first. See
+    /// docs/superpowers/specs/2026-09-17-two-lines-and-collapse-design.md.
+    static let secondIdentifier = "BarnLineB"
 
-    init() {
+    let identifier: String
+
+    init(autosaveName: String = "BarnLine", identifier: String = Line.identifier) {
+        self.identifier = identifier
         item = NSStatusBar.system.statusItem(withLength: BarnGeometry.showWidth)
-        item.autosaveName = "BarnLine"
+        item.autosaveName = autosaveName
         item.button?.title = ""
         item.button?.image = nil
-        item.button?.setAccessibilityIdentifier(Self.identifier)
+        item.button?.setAccessibilityIdentifier(identifier)
     }
 
     var width: CGFloat { item.length }

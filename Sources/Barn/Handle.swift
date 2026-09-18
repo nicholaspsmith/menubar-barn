@@ -17,9 +17,46 @@ final class Handle {
 
     func draw(hidden: Bool, style: HandleStyle) {
         switch style {
+        case .doubleChevron: controller.setIcon(Self.doubleChevron(pointingLeft: hidden))
         case .barn: controller.setIcon(Self.barn(open: !hidden))
         case .chevron: controller.setIcon(Self.chevron(pointingLeft: hidden))
         }
+    }
+
+    /// The agent's own overflow button, redrawn: « while the icons are in
+    /// the barn, » while they are out, in barn red so it reads as ours. The
+    /// system draws its glyph about 10pt wide inside a 17.5pt button; this
+    /// matches that so the bar looks the same as it would with the system's,
+    /// just in colour.
+    private static func doubleChevron(pointingLeft: Bool) -> NSImage {
+        let size = NSSize(width: 18, height: 18)
+        let image = NSImage(size: size, flipped: false) { rect in
+            let midY = rect.midY
+            let arm: CGFloat = 3.6
+            let rise: CGFloat = 4.2
+            let gap: CGFloat = 5.2
+            let path = NSBezierPath()
+            for offset in [-gap / 2, gap / 2] {
+                let x = rect.midX + offset
+                if pointingLeft {
+                    path.move(to: NSPoint(x: x + arm / 2, y: midY + rise))
+                    path.line(to: NSPoint(x: x - arm / 2, y: midY))
+                    path.line(to: NSPoint(x: x + arm / 2, y: midY - rise))
+                } else {
+                    path.move(to: NSPoint(x: x - arm / 2, y: midY + rise))
+                    path.line(to: NSPoint(x: x + arm / 2, y: midY))
+                    path.line(to: NSPoint(x: x - arm / 2, y: midY - rise))
+                }
+            }
+            path.lineWidth = 1.7
+            path.lineCapStyle = .round
+            path.lineJoinStyle = .round
+            Self.barnRed.setStroke()
+            path.stroke()
+            return true
+        }
+        image.isTemplate = false
+        return image
     }
 
     /// A barn. Doors shut while the icons are hidden, open — the doorway cut

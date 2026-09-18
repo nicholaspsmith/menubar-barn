@@ -13,11 +13,20 @@ public enum HostedBar {
     /// as a 46pt slot, a 300pt one as 316.
     public static let slotPadding: CGFloat = 16
 
-    /// An item whose virtual left edge lands below this is ejected. Measured
-    /// to the point: a left edge of 143 kept its slot, 142 lost it, with either
-    /// Finder or Terminal frontmost. Treated as a starting guess rather than a
-    /// law — `narrower(than:)` backs off when the agent disagrees.
+    /// Where the drop floor sits relative to the frontmost app's name — the
+    /// second title in its menu bar, after the Apple menu. An item whose
+    /// virtual left edge lands below `appName.maxX + floorOffset` is dropped
+    /// from the bar. Measured with four apps in front (Terminal 120→~154,
+    /// Zen 88→~124, Finder 105→~136, iTerm2 109→~142); the agent keeps the
+    /// Apple menu and the app's name clear, plus this much.
+    public static let floorOffset: CGFloat = 33
+
+    /// The floor assumed when the frontmost app cannot be read. Low on
+    /// purpose: a guess below the real floor only makes B wider, while one
+    /// above it leaves B in the band and brings the « back.
     public static let ejectionFloor: CGFloat = 143
+
+    public static func floor(appNameRightEdge: CGFloat) -> CGFloat { appNameRightEdge + floorOffset }
 
     /// How far above the floor the line's own left edge is aimed. Small on
     /// purpose: the first hidden icon's edge is this much minus its width, and
@@ -47,6 +56,68 @@ public enum HostedBar {
 
     public static func narrower(than width: CGFloat) -> CGFloat {
         max(width - retryStep, BarnGeometry.showWidth)
+    }
+
+    // MARK: - Two lines
+
+    /// The band the « is shown for starts this far right of the frontmost
+    /// app's last menu title — measured between 22 and 48pt across apps,
+    /// presumably the room the agent keeps for the « itself plus a gap that
+    /// comes and goes. A's left edge is aimed past the widest seen.
+    public static let boundaryMargin: CGFloat = 56
+
+    /// How far below the floor B's left edge is aimed, so a floor measured
+    /// a few points off still drops it.
+    public static let floorClearance: CGFloat = 16
+
+    /// The widest slot that survives the half-display cliff.
+    static func widestSlot(displayWidth: CGFloat) -> CGFloat {
+        displayWidth / 2 - floorMargin
+    }
+
+    public struct Split: Equatable {
+        public let a: CGFloat
+        public let b: CGFloat
+        /// B hit the half-display cliff before reaching the floor, so its
+        /// left edge sits in the band and the « will show. The band is wider
+        /// than half the bar — an app whose menus run past ~900pt on a
+        /// 1600pt display — and no number of items can cross it without one
+        /// of them starting inside it.
+        public let bCapped: Bool
+    }
+
+    /// Widths for the two lines: A from `lineRightEdge` down to just right
+    /// of the boundary, B from there down to just below the floor.
+    ///
+    /// Everything left of B has a virtual edge below the floor and is dropped
+    /// without a «; A sits right of the band, so it is not an overflow
+    /// member; B is below the floor, so neither is it. Each is capped under
+    /// the cliff — if A is capped, B reaches the rest of the way; if B is
+    /// capped there is nothing more two items can do.
+    ///
+    /// - Parameter boundary: the frontmost app's last menu title's right edge.
+    /// - Parameter floor: where the agent starts dropping, from `floor(appNameRightEdge:)`.
+    public static func split(
+        lineRightEdge: CGFloat,
+        boundary: CGFloat,
+        floor: CGFloat,
+        displayWidth: CGFloat
+    ) -> Split {
+        let cap = widestSlot(displayWidth: displayWidth)
+        let aSlot = min(lineRightEdge - (boundary + boundaryMargin), cap)
+        let a = max(aSlot - slotPadding, BarnGeometry.showWidth)
+        let aLeft = lineRightEdge - (a + slotPadding)
+        let bWanted = aLeft - (floor - floorClearance)
+        let bSlot = min(bWanted, cap)
+        let b = max(bSlot - slotPadding, BarnGeometry.showWidth)
+        return Split(a: a, b: b, bCapped: bWanted > cap)
+    }
+
+    /// True when A cannot be placed right of the band at all: the visible
+    /// icons reach past the frontmost app's menus, and the agent would start
+    /// overflowing them. Barn collapses the leftmost visible icon instead.
+    public static func needsCollapse(lineRightEdge: CGFloat, boundary: CGFloat) -> Bool {
+        lineRightEdge - (BarnGeometry.showWidth + slotPadding) < boundary + boundaryMargin
     }
 
     /// What the agent's tree says about one item.

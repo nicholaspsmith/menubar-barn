@@ -74,6 +74,14 @@ enum Arranger {
         return .success(landed)
     }
 
+    /// Drag one of our own items, no read-back: the caller checks the
+    /// agent's layout by identifier, which `move` cannot do for an app with
+    /// several items of its own.
+    static func dragOwn(fromX: CGFloat, toX: CGFloat) {
+        drag(fromX: fromX, toX: toX)
+        Thread.sleep(forTimeInterval: 0.3)
+    }
+
     /// A plain left click at `x` on the menu bar — what a user does to open an
     /// icon's menu. For apps that ignore the accessibility press and only
     /// answer a real click (BetterDisplay).

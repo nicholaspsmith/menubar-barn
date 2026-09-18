@@ -60,17 +60,19 @@ it on, and the command has to be the *installed* binary. A bare `--login`, or
 | | |
 |---|---|
 | **Left click** | the hidden icons, each with its own live menu |
-| **Right click** | Visible Icons (ticked = on the bar), reveal behaviour, Icon (barn or chevron), Start at Login, Quit |
+| **Right click** | Visible Icons (ticked = on the bar), reveal behaviour, Icon (double chevron, barn or chevron), Start at Login, Quit |
 
 ## The menu-bar icon
 
 ![The menu-bar icon](docs/menubar-icon.png)
 
-The control is the barn itself: doors shut while the icons are inside, open while its
-menu of hidden icons is up or while the icons are out on the bar. It is drawn a little larger than a normal glyph on purpose,
-since the other Menubarn characters are supposed to have come out of it. Prefer
-the original chevron? Right click ▸ Icon ▸ Chevron; the bar re-measures the
-handle's width on its own.
+The control is a double chevron in barn red — the « macOS 27 shows for its own
+overflow, in Barn's colour — pointing left while the icons are in the barn
+and right while they are out. Prefer the barn itself? Right click ▸ Icon ▸
+Barn: doors shut while the icons are inside, open while its menu is up or the
+icons are out, drawn a little larger than a normal glyph on purpose, since the
+other Menubarn characters are supposed to have come out of it. The original
+single chevron is there too; the bar re-measures the handle's width on its own.
 
 A hidden app's submenu is its **real menu**, read live while its icon sits
 off-screen — so a hidden app stays completely usable and nothing on your bar
@@ -101,27 +103,44 @@ rather than silently disappearing.
 ### On macOS 27
 
 macOS 27 moved every status item into one system process, `MenuBarAgent`,
-which lays the whole bar out itself. The width trick still works, but the
-agent enforces limits it never documented: an item wider than half the display
-is thrown out of the layout rather than laid out, and so is any item whose left
-edge would land below about 143pt. Barn's old 2000pt line hit the first rule and
-hid nothing.
+which lays the whole bar out itself and collapses whatever does not fit into
+a « of its own. Barn stands in for that «.
 
-Barn now sizes the line per bar — from where the agent says the line's own slot
-ends, kept under both ceilings — and reads the layout back: a line the agent
-ejected is narrowed and tried again. The icons to its left then fall below the
-agent's floor and are dropped from the bar entirely; the one or two nearest the
-line can instead land in the system's own « overflow menu, which is also off
-the bar. Either way they stay in Barn's panel with their live menus, since an
-app's menu can still be read while its icon is gone.
+The agent sorts each trailing item by where its left edge would land. Past
+the frontmost app's last menu it is placed; below the app's *name* (plus a
+margin) it is dropped from the bar outright; in between it is an overflow
+member, and that is when the agent shows its «. An item wider than half the
+display is dropped wherever it sits — which is what happened to Barn's old
+2000pt line.
 
-Two visible differences. The system's « button appears at the right end of the
-line, just left of the barn — the agent shows it whenever anything is off the
-bar and it cannot be suppressed. And because it is the agent, not each app,
-that says where an icon is, Barn needs Accessibility on 27 to know where its
-own line ends; without the grant it falls back to the half-width ceiling, which
-usually holds. The old capacity warnings ("no room to show…") do not apply on
-27: an icon that does not fit goes into the « menu, not into the notch.
+So Barn now runs **two lines**, side by side. The right one is sized to end
+just past the frontmost app's menus; the left one reaches down below the
+app's name. Everything left of them is dropped, the left line is dropped with
+it, and the right one sits clear of the band — no « anywhere. The split
+follows the frontmost app: switch from Finder to Xcode and the lines
+re-divide (two length changes, nothing moves), and Barn reads the agent's
+layout back after each change and nudges if a « slipped in.
+
+The handle is drawn as the agent's own « in barn red, so the bar looks the
+way macOS taught you to expect, and the icons behind it open from Barn's
+panel with their live menus instead of the system's.
+
+When the bar is genuinely full for the app in front — its menus reach past
+where the visible icons start — Barn does what the agent would: it hides
+the leftmost visible icon, into the barn, and checks again. That is a real
+hide, like ticking it off in Visible Icons, and it stays hidden until you
+tick it back; putting it back on every app switch would need a reveal each
+time. To move an icon while the bar is that full, Barn briefly takes the
+menu bar itself (a regular app for a second, with a one-word menu) so the
+agent lays everything out and the drag lands where it is aimed, then hands
+focus back.
+
+Two things it cannot do. The agent's overflow has no off switch, so an app
+with menus wider than about half the display leaves a band no item can
+cross without starting inside it; the « shows for that app and Barn says so
+in its log. And it needs Accessibility to know where its own lines end and
+where the frontmost app's menus do; without the grant it falls back to
+guesses that usually hold.
 
 ## Known limits
 

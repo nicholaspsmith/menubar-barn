@@ -89,6 +89,26 @@ enum AXHostedBar {
         return HostedLayout(slots: slots, chevron: chevron, barWidth: bar.width)
     }
 
+    /// The two edges of an app's menu bar the agent lays the trailing items
+    /// out against: where its name ends (the title after the Apple menu),
+    /// below which items are dropped, and where its last menu ends, past
+    /// which items are placed.
+    struct MenuEdges: Equatable {
+        let appNameRightEdge: CGFloat
+        let menusRightEdge: CGFloat
+    }
+
+    /// Nil when the app publishes no menu bar, or does not answer.
+    static func menuEdges(ofPID pid: pid_t) -> MenuEdges? {
+        let app = AXUIElementCreateApplication(pid)
+        AXUIElementSetMessagingTimeout(app, 0.5)
+        guard let bar = attribute(app, kAXMenuBarAttribute), CFGetTypeID(bar) == AXUIElementGetTypeID() else { return nil }
+        let titles = (attribute(bar as! AXUIElement, kAXChildrenAttribute) as? [AXUIElement]) ?? []
+        let frames = titles.compactMap { frame(of: $0) }
+        guard frames.count >= 2, let last = frames.map(\.maxX).max() else { return nil }
+        return MenuEdges(appNameRightEdge: frames[1].maxX, menusRightEdge: last)
+    }
+
     // MARK: - AX plumbing
 
     private static func attribute(_ element: AXUIElement, _ name: String) -> CFTypeRef? {

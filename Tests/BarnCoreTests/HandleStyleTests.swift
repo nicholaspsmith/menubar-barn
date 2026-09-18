@@ -17,7 +17,12 @@ final class HandleStyleTests: XCTestCase {
         super.tearDown()
     }
 
-    func testDefaultsToTheBarn() {
+    func testDefaultsToTheDoubleChevron() {
+        XCTAssertEqual(HandleStyleStore.load(from: defaults), .doubleChevron)
+    }
+
+    func testRoundTripsTheBarn() {
+        HandleStyleStore.save(.barn, to: defaults)
         XCTAssertEqual(HandleStyleStore.load(from: defaults), .barn)
     }
 
@@ -26,8 +31,8 @@ final class HandleStyleTests: XCTestCase {
         XCTAssertEqual(HandleStyleStore.load(from: defaults), .chevron)
     }
 
-    func testUnknownValueFallsBackToTheBarn() {
+    func testUnknownValueFallsBackToTheDefault() {
         defaults.set("windmill", forKey: HandleStyleStore.defaultsKey)
-        XCTAssertEqual(HandleStyleStore.load(from: defaults), .barn)
+        XCTAssertEqual(HandleStyleStore.load(from: defaults), .doubleChevron)
     }
 }
