@@ -3,3 +3,5 @@ restore-positions.sh
 build/
 .DS_Store
 menubar-baseline.txt
+*.swp
+*.swo
