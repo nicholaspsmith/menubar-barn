@@ -60,37 +60,50 @@ enum AXHostedBar {
 
     /// Nil when the agent is absent or its tree cannot be read (no
     /// Accessibility grant, or it is wedged — it does hang on occasion).
-    static func layout() -> HostedLayout? {
+    ///
+    /// Reads the agent's windows in turn rather than just the first: they all
+    /// publish the same bar, but only one of them hands back the apps'
+    /// status-item buttons, and so the identifiers Barn labels its own items
+    /// with. See `HostedWindows`. Stops as soon as every slot of
+    /// `identifying` has a name, which is normally the second window.
+    static func layout(identifying ownPID: pid_t = ProcessInfo.processInfo.processIdentifier) -> HostedLayout? {
         guard let pid = agentPID, AXMenuBar.isTrusted else { return nil }
         let app = AXUIElementCreateApplication(pid)
         AXUIElementSetMessagingTimeout(app, messagingTimeout)
         guard let windows = attribute(app, kAXWindowsAttribute) as? [AXUIElement],
-              let window = windows.first,
-              let bar = frame(of: window)
+              let bar = windows.lazy.compactMap({ frame(of: $0) }).first
         else { return nil }
 
-        var slots: [HostedSlot] = []
+        var readings: [[HostedSlotReading]] = []
         var chevron: ItemFrame?
-        for child in (attribute(window, kAXChildrenAttribute) as? [AXUIElement]) ?? [] {
-            guard let frame = frame(of: child) else { continue }
-            // The « button is the agent's own, a direct child of the window
-            // rather than a slot holding someone's item. Its description is
-            // localized, so the role and owner are what identify it.
-            if role(of: child) == kAXButtonRole as String, owner(of: child) == pid {
-                chevron = frame
-                continue
+        for window in windows {
+            var reading: [HostedSlotReading] = []
+            for child in (attribute(window, kAXChildrenAttribute) as? [AXUIElement]) ?? [] {
+                guard let frame = frame(of: child) else { continue }
+                // The « button is the agent's own, a direct child of the window
+                // rather than a slot holding someone's item. Its description is
+                // localized, so the role and owner are what identify it.
+                if role(of: child) == kAXButtonRole as String, owner(of: child) == pid {
+                    chevron = chevron ?? frame
+                    continue
+                }
+                guard let item = (attribute(child, kAXChildrenAttribute) as? [AXUIElement])?.first,
+                      let itemPID = owner(of: item)
+                else { continue }
+                // The agent's own extras — clock, Wi‑Fi, Control Center — are not
+                // anyone's status item and are never Barn's to hide.
+                guard itemPID != pid else { continue }
+                reading.append(HostedSlotReading(
+                    pid: itemPID,
+                    frame: frame,
+                    identifier: attribute(item, kAXIdentifierAttribute) as? String
+                ))
             }
-            guard let item = (attribute(child, kAXChildrenAttribute) as? [AXUIElement])?.first,
-                  let itemPID = owner(of: item)
-            else { continue }
-            // The agent's own extras — clock, Wi‑Fi, Control Center — are not
-            // anyone's status item and are never Barn's to hide.
-            guard itemPID != pid else { continue }
-            slots.append(HostedSlot(
-                pid: itemPID,
-                frame: frame,
-                identifier: attribute(item, kAXIdentifierAttribute) as? String
-            ))
+            readings.append(reading)
+            if HostedWindows.identified(HostedWindows.merge(readings), for: ownPID) { break }
+        }
+        let slots = HostedWindows.merge(readings).map {
+            HostedSlot(pid: $0.pid, frame: $0.frame, identifier: $0.identifier)
         }
         return HostedLayout(slots: slots, chevron: chevron, barWidth: bar.width)
     }
