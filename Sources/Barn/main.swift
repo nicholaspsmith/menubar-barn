@@ -262,6 +262,10 @@ final class App: NSObject, NSApplicationDelegate {
     private var collapseAttempts = 0
     private var collapseBoundary: CGFloat = 0
     private static let collapseAttemptLimit = 3
+    /// Re-settles spent trying to bring the handle back onto the bar, reset
+    /// the moment it has a slot again.
+    private var handleRescues = 0
+    private static let handleRescueLimit = 3
 
     private func showLine() {
         line.show()
@@ -340,30 +344,34 @@ final class App: NSObject, NSApplicationDelegate {
                 self.hostedHide = attempt
                 return
             }
+            /// Every path that stops retrying ends here: record the attempt,
+            /// re-read the bar, and check we have not walled off our own
+            /// control on the way.
+            func settle(_ attempt: HostedHide) {
+                var attempt = attempt
+                attempt.verified = true
+                self.hostedHide = attempt
+                self.refreshSnapshots()
+                self.rescueHandleIfLost(in: layout)
+            }
             let aPlaced = self.ownLineSlot(in: layout) != nil
             let bPlaced = self.ownSlot(Line.secondIdentifier, in: layout) != nil
             if aPlaced, !bPlaced, layout.chevron == nil {
-                attempt.verified = true
-                self.hostedHide = attempt
                 arrangeLog.notice("hosted hide: clean after \(attempt.retries, privacy: .public) retries")
-                self.refreshSnapshots()
+                settle(attempt)
                 return
             }
             if attempt.split.bCapped {
                 // Nothing to retry: the band is wider than half the bar for
                 // this app, and B starts inside it whatever we do.
-                attempt.verified = true
                 attempt.retries = Self.hostedRetries
-                self.hostedHide = attempt
                 arrangeLog.notice("hosted hide: menus end at \(Int(attempt.boundary), privacy: .public); the band is wider than half the bar, so the « stays for this app")
-                self.refreshSnapshots()
+                settle(attempt)
                 return
             }
             guard attempt.retries < Self.hostedRetries else {
                 arrangeLog.error("hosted hide: still showing a « (A placed=\(aPlaced, privacy: .public), B placed=\(bPlaced, privacy: .public)); giving up")
-                attempt.verified = true
-                self.hostedHide = attempt
-                self.refreshSnapshots()
+                settle(attempt)
                 return
             }
             // A « with B dropped means A is in the band: move the split
@@ -439,6 +447,33 @@ final class App: NSObject, NSApplicationDelegate {
         guard !between.isEmpty || leftOfLine else { return }
         arrangeLog.notice("handle: \(between.count, privacy: .public) icon(s) between A and the handle (left of A: \(leftOfLine, privacy: .public)); moving the handle beside A")
         Arranger.dragOwn(fromX: handle.frame.minX + handle.frame.width / 2, toX: a.frame.maxX + 4)
+    }
+
+    /// Re-settles when the handle has gone off the bar entirely.
+    ///
+    /// The one failure a user cannot click their way out of. The handle is
+    /// the only control Barn has, and if the agent ranks it left of A — where
+    /// A's own width pushes it clear off the display — it is gone until the
+    /// app is relaunched. `placeHandleBesideLine` cannot help either: it
+    /// drags the handle from where it sits, and an item with no slot has
+    /// nowhere to drag from.
+    ///
+    /// So do what a launch does: go narrow, let the agent place everything
+    /// again, and drag the handle back beside A. Bounded, because a re-settle
+    /// flashes the hidden block back for a moment and a bar that will not
+    /// take the handle must not flash it on every poll.
+    private func rescueHandleIfLost(in layout: HostedLayout) {
+        // Only meaningful against a layout we can read our own line in: no A
+        // means the read told us nothing, not that the handle is gone.
+        guard isHidden, ownLineSlot(in: layout) != nil else { return }
+        guard ownSlot(Self.handleIdentifier, in: layout) == nil else {
+            handleRescues = 0
+            return
+        }
+        guard handleRescues < Self.handleRescueLimit else { return }
+        handleRescues += 1
+        arrangeLog.error("handle: no slot on the bar — re-settling to put it back (attempt \(self.handleRescues, privacy: .public))")
+        settleThenApply()
     }
 
     /// Stay narrow, let the menu bar place us, then apply the real state.
