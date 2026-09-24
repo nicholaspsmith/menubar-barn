@@ -87,4 +87,24 @@ final class RoomTests: XCTestCase {
         XCTAssertEqual(BarnGeometry.shortfallToShow(width: 32, leftmostVisibleMinX: 200, in: external), 0)
         XCTAssertEqual(BarnGeometry.shortfallToShow(width: 32, leftmostVisibleMinX: 10, in: external), 22)
     }
+
+    // MARK: - The one line before macOS 27
+
+    func testUnhostedLineKeepsTheOldWidthOnALaptopBar() {
+        // 2000pt has pushed every block clear on the built-in display since day one.
+        XCTAssertEqual(BarnGeometry.unhostedLineWidth(in: screen), 2000)
+    }
+
+    func testUnhostedLineOutgrowsAWideExternalDisplay() {
+        // The 2560pt Dell, 2026-09-23: a 2000pt line whose right edge sat at
+        // x=2023 left the block's last icon cut off at x=-15. The line has to
+        // be at least the whole span plus room for the block.
+        let dell = MenuBarGeometry(usableMinX: 0, usableMaxX: 2560)
+        XCTAssertEqual(BarnGeometry.unhostedLineWidth(in: dell), 3560)
+    }
+
+    func testUnhostedLineStaysUnderTheStatusItemClamp() {
+        let huge = MenuBarGeometry(usableMinX: 0, usableMaxX: 6016)
+        XCTAssertEqual(BarnGeometry.unhostedLineWidth(in: huge), BarnGeometry.maxLineWidth)
+    }
 }

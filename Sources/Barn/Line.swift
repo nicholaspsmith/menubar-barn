@@ -19,16 +19,16 @@ import BarnCore
 final class Line {
     private let item: NSStatusItem
 
-    /// Wide enough to push any realistic block clear off the left edge, far
-    /// below the ~5012pt clamp. Precision would be pointless: overshooting only
-    /// pushes hidden icons further off-screen, and the app cannot measure its own
-    /// position reliably anyway — a status item's window frame disagrees with its
-    /// true screen position by hundreds of points, because these items are hosted
-    /// by Control Center rather than by us.
-    ///
-    /// That is the pre-27 width. On macOS 27 the agent ejects an item this wide
-    /// outright, so the owner computes a width per bar and passes it in.
-    static let hiddenWidth: CGFloat = 2000
+    /// The pre-27 floor; the owner passes `BarnGeometry.unhostedLineWidth`,
+    /// which grows with the display, since on a wide one a 2000pt line stops
+    /// short of the edge. Precision would be pointless: overshooting only
+    /// pushes hidden icons further off-screen, and the app cannot measure its
+    /// own position reliably anyway — a status item's window frame disagrees
+    /// with its true screen position by hundreds of points, because these
+    /// items are hosted by Control Center rather than by us. On macOS 27 the
+    /// agent ejects an item this wide outright, so the owner computes a width
+    /// per bar and passes it in.
+    static let hiddenWidth: CGFloat = BarnGeometry.unhostedLineFloor
 
     /// Readable through the agent's tree, so the line can be told from the
     /// handle by name rather than by guessing from widths.

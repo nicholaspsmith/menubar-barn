@@ -59,8 +59,13 @@ it on, and the command has to be the *installed* binary. A bare `--login`, or
 
 | | |
 |---|---|
-| **Left click** | the hidden icons, each with its own live menu |
-| **Right click** | Visible Icons (ticked = on the bar), reveal behaviour, Icon (double chevron, barn or chevron), Start at Login, Quit |
+| **Left click** | every menu-bar app: the ones in the barn each with its own live menu, the ones still out on the bar greyed — click one to bring it in |
+| **Right click** | Visible Icons (ticked = on the bar), Panel Order (drag the list into any order; A–Z until you do), reveal behaviour, Icon (double chevron, barn or chevron), Start at Login, Quit |
+
+A warning at the top of the right-click menu — an icon cut off at the screen
+edge, lost in the notch, or stacked on the system « — is also its fix: click
+it and Barn tucks the icon in, or re-settles the barn when the icon is already
+in the block and merely not pushed far enough.
 
 ## The menu-bar icon
 

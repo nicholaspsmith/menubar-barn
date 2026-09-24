@@ -36,6 +36,9 @@ final class App: NSObject, NSApplicationDelegate {
     private var rehideTimer: Timer?
     private var revealMode = RevealModeStore.load(from: .standard)
     private var handleStyle = HandleStyleStore.load(from: .standard)
+    /// The order the panel lists apps in; empty is alphabetical.
+    private var panelOrder = PanelOrderStore.load(from: .standard)
+    private var panelOrderWindow: PanelOrderWindowController?
     private var peekToken = UUID().uuidString
     private static let settleDelay: TimeInterval = 1.5
     /// Comfortably longer than the 5s poll that refreshes it, short enough that a
@@ -280,7 +283,7 @@ final class App: NSObject, NSApplicationDelegate {
     /// agent showing its «. Runs on every poll and app switch; when the
     /// numbers have not changed it does nothing.
     private func hideLine() {
-        guard AXHostedBar.isHosted, let lineB else { line.hide(); return }
+        guard AXHostedBar.isHosted, let lineB else { line.hide(width: BarnGeometry.unhostedLineWidth(in: MenuBarGeometry.current())); return }
         if let attempt = hostedHide, !attempt.verified { return }
 
         let layout = AXHostedBar.layout()
@@ -516,15 +519,25 @@ final class App: NSObject, NSApplicationDelegate {
         menu.removeAllItems()
 
         if AXMenuBar.isTrusted {
+            // Each warning is also the fix: clicking it tucks the icon into the
+            // barn, or re-settles the barn when the icon is already in the block
+            // and merely not pushed far enough. A warning the user can only read
+            // leaves them to work out which of Barn's own moves undoes it.
+            let onNotch = MenuBarGeometry.current().usableMinX > 0
             for item in strandedSnapshot {
-                menu.addItem(disabledItem("⚠ \(item.name) is in the notch dead zone"))
+                let where_ = onNotch ? "is in the notch dead zone" : "is cut off at the left edge of the bar"
+                let fix = actionItem("⚠ \(item.name) \(where_) — click to fix", #selector(tuckIn(_:)))
+                fix.representedObject = AppRef(pid: item.pid, name: item.name, isHidden: false)
+                menu.addItem(fix)
             }
             // On 27 an icon can end up in the agent's own « — dragged between
             // Barn's two lines, usually. It is off the bar, but not by Barn's
             // doing, and the « it brings with it is the thing Barn exists to
             // replace; say so rather than quietly fighting the drag.
             for item in overflowedSnapshot {
-                menu.addItem(disabledItem("⚠ \(item.name) is in the system « menu — ⌘-drag it right of Barn's «"))
+                let fix = actionItem("⚠ \(item.name) is in the system « menu — click to move it into the barn", #selector(tuckIn(_:)))
+                fix.representedObject = AppRef(pid: item.pid, name: item.name, isHidden: false)
+                menu.addItem(fix)
             }
         } else {
             menu.addItem(actionItem("⚠ Grant Accessibility…", #selector(grantTrust)))
@@ -537,6 +550,7 @@ final class App: NSObject, NSApplicationDelegate {
             let manage = NSMenuItem(title: "Visible Icons", action: nil, keyEquivalent: "")
             manage.submenu = buildManageMenu()
             menu.addItem(manage)
+            menu.addItem(actionItem("Panel Order…", #selector(showPanelOrder)))
         }
 
         let reveal = NSMenuItem(title: "When Showing", action: nil, keyEquivalent: "")
@@ -574,18 +588,7 @@ final class App: NSObject, NSApplicationDelegate {
     private func buildManageMenu() -> NSMenu {
         let menu = NSMenu()
         let geometry = MenuBarGeometry.current()
-        let ownPID = ProcessInfo.processInfo.processIdentifier
-
-        var seen = Set<pid_t>()
-        let apps = itemsSnapshot
-            .filter { $0.pid != ownPID }
-            // One row per process, and Control Center is one process owning
-            // several items — Wi‑Fi, Bluetooth, the clock, itself. A single
-            // tick cannot say which, and the drag grabbed the clock, which
-            // macOS pins (measured 2026-09-10: didNotLand every time). System
-            // Settings ▸ Control Center already toggles each of those.
-            .filter { $0.bundleID != Self.controlCenterBundleID && $0.bundleID != AXHostedBar.agentBundleID }
-            .filter { seen.insert($0.pid).inserted }
+        let apps = menuBarApps()
             .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
 
         if apps.isEmpty {
@@ -602,6 +605,48 @@ final class App: NSObject, NSApplicationDelegate {
             menu.addItem(item)
         }
         return menu
+    }
+
+    /// The apps the checklist and the panel list: one per process, from the
+    /// last sweep.
+    ///
+    /// One row per process, and Control Center is one process owning several
+    /// items — Wi‑Fi, Bluetooth, the clock, itself. A single tick cannot say
+    /// which, and the drag grabbed the clock, which macOS pins (measured
+    /// 2026-09-10: didNotLand every time). System Settings ▸ Control Center
+    /// already toggles each of those.
+    private func menuBarApps() -> [MenuBarItem] {
+        let ownPID = ProcessInfo.processInfo.processIdentifier
+        var seen = Set<pid_t>()
+        return itemsSnapshot
+            .filter { $0.pid != ownPID }
+            .filter { $0.bundleID != Self.controlCenterBundleID && $0.bundleID != AXHostedBar.agentBundleID }
+            .filter { seen.insert($0.pid).inserted }
+    }
+
+    /// Every app as the panel lists it, in the chosen order.
+    private func panelApps() -> [PanelApp] {
+        let geometry = MenuBarGeometry.current()
+        let apps = menuBarApps().map { item in
+            PanelApp(
+                name: item.name,
+                pid: item.pid,
+                key: item.key,
+                icon: NSRunningApplication(processIdentifier: item.pid)?.icon,
+                isHidden: item.placement(in: geometry) == .hidden
+            )
+        }
+        return PanelOrderStore.ordered(apps, key: \.key, name: \.name, by: panelOrder)
+    }
+
+    @objc private func showPanelOrder() {
+        if panelOrderWindow == nil {
+            panelOrderWindow = PanelOrderWindowController { [weak self] order in
+                self?.panelOrder = order
+                PanelOrderStore.save(order, to: .standard)
+            }
+        }
+        panelOrderWindow?.show(apps: panelApps())
     }
 
     /// Rebuilt on every open, so the checkmark always reflects the live choice.
@@ -637,15 +682,19 @@ final class App: NSObject, NSApplicationDelegate {
         handle.draw(hidden: isHidden, style: style)
     }
 
-    /// Left click drops the hidden icons down as a menu, each with its own real
-    /// menu inside. Nothing moves and nothing disappears — the whole point of
-    /// presenting them here rather than shuffling the bar to make them visible.
-    /// The hidden-icons panel, built into the item's attached menu.
+    /// Left click drops the barn's contents down as a menu: every app, the
+    /// hidden ones each with its own real menu inside, the ones still out on
+    /// the bar greyed until clicked in. Nothing moves and nothing disappears —
+    /// the whole point of presenting them here rather than shuffling the bar.
     private func buildPanel(into menu: NSMenu) {
         let built = panel.build(
-            hidden: hiddenSnapshot,
-            manage: AXMenuBar.isTrusted ? buildManageMenu() : nil,
-            hasMenu: { [menuPIDs] in menuPIDs.contains($0) }
+            apps: panelApps(),
+            hasMenu: { [menuPIDs] in menuPIDs.contains($0) },
+            hideRow: { [unowned self] app in
+                let row = self.actionItem(app.name, #selector(self.tuckIn(_:)))
+                row.representedObject = AppRef(pid: app.pid, name: app.name, isHidden: false)
+                return row
+            }
         )
         menu.autoenablesItems = false
         for item in built.items {
@@ -726,6 +775,27 @@ final class App: NSObject, NSApplicationDelegate {
             self.pid = pid
             self.name = name
             self.isHidden = isHidden
+        }
+    }
+
+    /// Put an icon in the barn, whichever way it is out.
+    ///
+    /// An icon right of the line is out on the bar (or lost in the notch, or
+    /// stacked on the system «) and is dragged across like the checklist does.
+    /// An icon already left of the line but still showing — cut off at the
+    /// screen edge because the block grew after the line was sized — needs no
+    /// drag at all: go narrow, let the bar settle, and size the line again.
+    @objc private func tuckIn(_ sender: NSMenuItem) {
+        guard let app = sender.representedObject as? AppRef else { return }
+        let ownPID = ProcessInfo.processInfo.processIdentifier
+        let items = itemsSnapshot.isEmpty ? AXMenuBar.items() : itemsSnapshot
+        let lineX = items.filter { $0.pid == ownPID }.map(\.frame.minX).min() ?? 0
+        let leftOfLine = items.filter { $0.pid == app.pid }.allSatisfy { $0.frame.maxX <= lineX + 1 }
+        if leftOfLine, isHidden {
+            arrangeLog.notice("tuck in: \(app.name, privacy: .public) is already left of the line; re-settling")
+            settleThenApply()
+        } else {
+            toggleAppHidden(sender)
         }
     }
 

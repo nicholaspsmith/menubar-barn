@@ -97,6 +97,26 @@ public enum BarnGeometry {
         return max(0, firstDrawableX - (leftmostVisibleMinX - width))
     }
 
+    /// The single line's width before macOS 27, where nothing ejects a wide
+    /// item and overshooting only pushes the block further off-screen.
+    ///
+    /// A constant used to do: `unhostedLineFloor` pushes any block clear on a
+    /// laptop's bar. On a wider display the line's own right edge can sit past
+    /// that constant, and a line no wider than the constant then stops short
+    /// of the screen edge, leaving the block's last icons cut off at x=0
+    /// (measured 2026-09-23 on a 2560pt display: line at 21..2023, an icon at
+    /// -15..17, half on the bar). The line's right edge can never be past the
+    /// usable span, so span plus an allowance for the block is always enough,
+    /// and it is read from the screen alone: the line's own AX frame, read
+    /// mid-relayout, is not to be trusted (widths oscillated 2002/2618/4617).
+    public static let unhostedLineFloor: CGFloat = 2000
+    public static let unhostedBlockAllowance: CGFloat = 1000
+
+    public static func unhostedLineWidth(in geometry: MenuBarGeometry) -> CGFloat {
+        let span = geometry.usableMaxX - geometry.usableMinX
+        return min(maxLineWidth, max(unhostedLineFloor, span + unhostedBlockAllowance))
+    }
+
     /// Width the line must take so a block of `blockWidth`, sitting immediately
     /// to its left, ends up entirely left of the usable area.
     ///

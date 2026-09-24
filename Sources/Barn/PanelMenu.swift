@@ -7,13 +7,30 @@
 import AppKit
 import BarnCore
 
-/// The hidden icons, presented as a menu.
+/// A menu-bar app as the panel lists it: every app gets a row, whether it is
+/// in the barn or still out on the bar.
+struct PanelApp {
+    let name: String
+    let pid: pid_t
+    /// Bundle identifier, or the name for an app without one — what the saved
+    /// order is keyed by.
+    let key: String
+    let icon: NSImage?
+    /// In the barn (pushed off the bar). Anything else — on the bar, in the
+    /// notch, in the system « — counts as out.
+    let isHidden: Bool
+}
+
+/// The barn's contents, presented as a menu.
 ///
 /// Deliberately a real `NSMenu` rather than a custom panel: submenus, keyboard
 /// navigation, hover, and dismissal all come for free and look like the rest of
-/// the system. Each hidden app is a row; its submenu is that app's *actual* menu,
-/// read live over the accessibility API, so a hidden app stays usable without any
-/// icon moving anywhere.
+/// the system. Every menu-bar app is a row. An app in the barn has its *actual*
+/// menu as its submenu, read live over the accessibility API, so it stays usable
+/// without any icon moving anywhere. An app still out on the bar is the same row
+/// greyed, with no submenu: clicking it brings the app into the barn, and on the
+/// next open it is an ordinary row. One list, so the whole bar is in view at once
+/// and there is no second menu to go looking in.
 final class PanelMenu: NSObject, NSMenuDelegate {
     private struct Owner {
         let pid: pid_t
@@ -27,13 +44,14 @@ final class PanelMenu: NSObject, NSMenuDelegate {
     /// receive — so the owner reveals the bar, clicks it there, and hides again.
     var onOpenByRevealing: ((pid_t) -> Void)?
 
-    /// - Parameter manage: the checklist of which icons are hidden, appended so
-    ///   it sits where someone looking at the hidden items would reach for it.
     /// - Parameter hasMenu: whether an app publishes a menu, answered from a
     ///   snapshot taken off the main thread. Asking AX here — while the panel
     ///   is being built for display — opens and closes the app's own menu,
     ///   which dismisses ours.
-    func build(hidden apps: [HiddenApp], manage: NSMenu?, hasMenu: (pid_t) -> Bool) -> NSMenu {
+    /// - Parameter hideRow: the row for an app that is out on the bar, wired by
+    ///   the owner to the same move that the Visible Icons checklist makes. The
+    ///   panel only dresses it: grey title, dimmed icon, no submenu.
+    func build(apps: [PanelApp], hasMenu: (pid_t) -> Bool, hideRow: (PanelApp) -> NSMenuItem) -> NSMenu {
         let menu = NSMenu()
         // A row whose only job is to hold a submenu has no action, and automatic
         // enabling greys such rows out: the submenu still opened on hover, but
@@ -42,17 +60,18 @@ final class PanelMenu: NSObject, NSMenuDelegate {
         ownerForMenu.removeAll()
 
         if apps.isEmpty {
-            let empty = NSMenuItem(title: "No hidden icons", action: nil, keyEquivalent: "")
+            let empty = NSMenuItem(title: "No menu bar apps found", action: nil, keyEquivalent: "")
             empty.isEnabled = false
             menu.addItem(empty)
         }
 
         for app in apps {
-            let item = NSMenuItem(title: app.name, action: nil, keyEquivalent: "")
-            if let icon = app.icon {
-                icon.size = NSSize(width: 16, height: 16)
-                item.image = icon
+            guard app.isHidden else {
+                menu.addItem(Self.dressedAsOut(hideRow(app), app: app))
+                continue
             }
+            let item = NSMenuItem(title: app.name, action: nil, keyEquivalent: "")
+            item.image = Self.rowIcon(app.icon, dimmed: false)
             if hasMenu(app.pid) {
                 let submenu = NSMenu()
                 submenu.autoenablesItems = false
@@ -72,13 +91,47 @@ final class PanelMenu: NSObject, NSMenuDelegate {
             menu.addItem(item)
         }
 
-        if let manage {
-            menu.addItem(.separator())
-            let item = NSMenuItem(title: "Visible Icons…", action: nil, keyEquivalent: "")
-            item.submenu = manage
-            menu.addItem(item)
-        }
+        // The settings live behind a right click, which nothing on screen says.
+        menu.addItem(.separator())
+        menu.addItem(Self.hint("Right-click the icon for settings"))
         return menu
+    }
+
+    /// An app that is out on the bar: the same row, greyed. Not a disabled
+    /// item — a disabled item cannot be clicked, and clicking is how it comes in.
+    private static func dressedAsOut(_ item: NSMenuItem, app: PanelApp) -> NSMenuItem {
+        item.attributedTitle = NSAttributedString(string: app.name, attributes: [
+            .font: NSFont.menuFont(ofSize: 0),
+            .foregroundColor: NSColor.disabledControlTextColor,
+        ])
+        item.image = rowIcon(app.icon, dimmed: true)
+        item.submenu = nil
+        item.toolTip = "\(app.name) is out on the bar. Click to bring it into the barn."
+        return item
+    }
+
+    private static func rowIcon(_ icon: NSImage?, dimmed: Bool) -> NSImage? {
+        guard let icon else { return nil }
+        let size = NSSize(width: 16, height: 16)
+        guard dimmed else {
+            icon.size = size
+            return icon
+        }
+        return NSImage(size: size, flipped: false) { rect in
+            icon.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 0.35)
+            return true
+        }
+    }
+
+    /// A line of small grey text: a caption, not a choice.
+    private static func hint(_ text: String) -> NSMenuItem {
+        let item = NSMenuItem(title: text, action: nil, keyEquivalent: "")
+        item.isEnabled = false
+        item.attributedTitle = NSAttributedString(string: text, attributes: [
+            .font: NSFont.menuFont(ofSize: NSFont.smallSystemFontSize),
+            .foregroundColor: NSColor.secondaryLabelColor,
+        ])
+        return item
     }
 
     // MARK: - Lazy submenus
