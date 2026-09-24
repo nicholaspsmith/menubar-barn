@@ -694,12 +694,33 @@ final class App: NSObject, NSApplicationDelegate {
                 let row = self.actionItem(app.name, #selector(self.tuckIn(_:)))
                 row.representedObject = AppRef(pid: app.pid, name: app.name, isHidden: false)
                 return row
-            }
+            },
+            settingsRow: actionItem("", #selector(openSettings))
         )
         menu.autoenablesItems = false
         for item in built.items {
             built.removeItem(item)
             menu.addItem(item)
+        }
+    }
+
+    /// The panel's footer: swap the panel for the settings menu.
+    ///
+    /// The panel is still closing when its action fires, so the settings menu
+    /// is popped a moment later, by hand, under the same button. Not through
+    /// the attached menu: that one asks the current event which menu to build,
+    /// and the event is the click on the footer — a left click, so the panel.
+    @objc private func openSettings() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
+            guard let self else { return }
+            let menu = NSMenu()
+            menu.autoenablesItems = false
+            self.buildMenu(menu)
+            self.handle.draw(hidden: false, style: self.handleStyle)
+            // Returns when the menu has closed, like a tracked press would.
+            self.controller.popUp(menu)
+            self.handle.draw(hidden: self.isHidden, style: self.handleStyle)
+            self.refreshSnapshots()
         }
     }
 

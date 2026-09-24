@@ -51,7 +51,10 @@ final class PanelMenu: NSObject, NSMenuDelegate {
     /// - Parameter hideRow: the row for an app that is out on the bar, wired by
     ///   the owner to the same move that the Visible Icons checklist makes. The
     ///   panel only dresses it: grey title, dimmed icon, no submenu.
-    func build(apps: [PanelApp], hasMenu: (pid_t) -> Bool, hideRow: (PanelApp) -> NSMenuItem) -> NSMenu {
+    /// - Parameter settingsRow: the footer, wired by the owner to open the
+    ///   settings menu in this one's place. Dressed as a caption, but a live row:
+    ///   text that names the other menu might as well take you there.
+    func build(apps: [PanelApp], hasMenu: (pid_t) -> Bool, hideRow: (PanelApp) -> NSMenuItem, settingsRow: NSMenuItem) -> NSMenu {
         let menu = NSMenu()
         // A row whose only job is to hold a submenu has no action, and automatic
         // enabling greys such rows out: the submenu still opened on hover, but
@@ -93,7 +96,7 @@ final class PanelMenu: NSObject, NSMenuDelegate {
 
         // The settings live behind a right click, which nothing on screen says.
         menu.addItem(.separator())
-        menu.addItem(Self.hint("Right-click the icon for settings"))
+        menu.addItem(Self.dressedAsHint(settingsRow, "Right-click the icon for settings"))
         return menu
     }
 
@@ -123,14 +126,12 @@ final class PanelMenu: NSObject, NSMenuDelegate {
         }
     }
 
-    /// A line of small grey text: a caption, not a choice.
-    private static func hint(_ text: String) -> NSMenuItem {
-        let item = NSMenuItem(title: text, action: nil, keyEquivalent: "")
-        item.isEnabled = false
-        item.attributedTitle = NSAttributedString(string: text, attributes: [
-            .font: NSFont.menuFont(ofSize: NSFont.smallSystemFontSize),
-            .foregroundColor: NSColor.secondaryLabelColor,
-        ])
+    /// A line of small grey text. Reads as a caption — no highlight on hover,
+    /// which an ordinary enabled row cannot avoid — and is still clickable:
+    /// the row's view takes the click itself and fires the row's action.
+    private static func dressedAsHint(_ item: NSMenuItem, _ text: String) -> NSMenuItem {
+        item.title = text
+        item.view = HintView(text: text, item: item)
         return item
     }
 
@@ -208,5 +209,43 @@ final class PanelMenu: NSObject, NSMenuDelegate {
                 self?.onOpenByRevealing?(ref.pid)
             }
         }
+    }
+}
+
+/// The footer's view: grey caption text with the menu's own inset, no
+/// highlight, and a click — either button — that closes the menu and fires
+/// the item's action.
+private final class HintView: NSView {
+    private weak var item: NSMenuItem?
+
+    init(text: String, item: NSMenuItem) {
+        self.item = item
+        super.init(frame: NSRect(x: 0, y: 0, width: 220, height: 22))
+        autoresizingMask = [.width]
+        let label = NSTextField(labelWithString: text)
+        label.font = .menuFont(ofSize: NSFont.smallSystemFontSize)
+        label.textColor = .secondaryLabelColor
+        label.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(label)
+        NSLayoutConstraint.activate([
+            // The menu's own text inset, so the caption lines up with the titles above.
+            label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 14),
+            label.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -14),
+            label.centerYAnchor.constraint(equalTo: centerYAnchor),
+        ])
+        setAccessibilityRole(.menuItem)
+        setAccessibilityLabel(text)
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override func mouseUp(with event: NSEvent) { fire() }
+    override func rightMouseUp(with event: NSEvent) { fire() }
+    override func accessibilityPerformPress() -> Bool { fire(); return true }
+
+    private func fire() {
+        guard let item, let action = item.action else { return }
+        item.menu?.cancelTracking()
+        NSApp.sendAction(action, to: item.target, from: item)
     }
 }
