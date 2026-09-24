@@ -11,7 +11,7 @@
 <p align="center">Part of the <a href="https://widgets.nicksmith.software">Menubarn</a> widget library.</p>
 
 <p align="center">
-  <img src="docs/images/panel.png" width="260" alt="The panel, listing hidden apps with their menus">
+  <img src="docs/images/panel.png" width="260" alt="The panel: every menu-bar app, the ones in the barn with their menus, the ones still on the bar greyed">
 </p>
 
 <p align="center">
