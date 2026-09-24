@@ -220,11 +220,13 @@ private final class HintView: NSView {
 
     init(text: String, item: NSMenuItem) {
         self.item = item
-        super.init(frame: NSRect(x: 0, y: 0, width: 220, height: 22))
-        autoresizingMask = [.width]
         let label = NSTextField(labelWithString: text)
         label.font = .menuFont(ofSize: NSFont.smallSystemFontSize)
         label.textColor = .secondaryLabelColor
+        // Sized to the text: a menu grows to its widest row, and a fixed
+        // frame here widened the whole panel (267pt against 230 without).
+        super.init(frame: NSRect(x: 0, y: 0, width: ceil(label.intrinsicContentSize.width) + 28, height: 22))
+        autoresizingMask = [.width]
         label.translatesAutoresizingMaskIntoConstraints = false
         addSubview(label)
         NSLayoutConstraint.activate([
@@ -239,13 +241,19 @@ private final class HintView: NSView {
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
+    /// The label is an NSTextField, which would take the click and drop it;
+    /// the row is one target, so every hit inside it is the row's.
+    override func hitTest(_ point: NSPoint) -> NSView? { super.hitTest(point) == nil ? nil : self }
+
     override func mouseUp(with event: NSEvent) { fire() }
     override func rightMouseUp(with event: NSEvent) { fire() }
     override func accessibilityPerformPress() -> Bool { fire(); return true }
 
     private func fire() {
         guard let item, let action = item.action else { return }
-        item.menu?.cancelTracking()
+        // Action first: the owner notes the request, then the menu's own
+        // did-close is what carries it out.
         NSApp.sendAction(action, to: item.target, from: item)
+        item.menu?.cancelTracking()
     }
 }

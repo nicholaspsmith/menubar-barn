@@ -11,6 +11,7 @@ import StatusItemKit
 
 private let arrangeLog = Logger(subsystem: "com.nicholaspsmith.Barn", category: "arrange")
 private let sweepLog = Logger(subsystem: "com.nicholaspsmith.Barn", category: "sweep")
+private let menuLog = Logger(subsystem: "com.nicholaspsmith.Barn", category: "menu")
 
 /// Barn — hides a contiguous block of menu-bar icons by widening a status
 /// item of its own, never by moving anyone else's.
@@ -31,6 +32,10 @@ final class App: NSObject, NSApplicationDelegate {
     /// on older systems it would just be a 17pt gap in the bar.
     private var lineB: Line?
     private var isHidden = true
+    /// The panel is open (between its will-open and did-close).
+    private var panelOpen = false
+    /// The footer was clicked: pop the settings menu once the panel has gone.
+    private var settingsRequested = false
     /// False until the menu bar has had a chance to place our narrow items.
     private var hasSettled = false
     private var rehideTimer: Timer?
@@ -111,12 +116,18 @@ final class App: NSObject, NSApplicationDelegate {
         )
         controller.onMenuWillOpen = { [weak self] in
             guard let self else { return }
+            self.panelOpen = true
             self.handle.draw(hidden: false, style: self.handleStyle)
         }
         controller.onMenuDidClose = { [weak self] in
             guard let self else { return }
+            self.panelOpen = false
             self.handle.draw(hidden: self.isHidden, style: self.handleStyle)
             self.refreshSnapshots()
+            if self.settingsRequested {
+                self.settingsRequested = false
+                self.popSettings()
+            }
         }
         panel = PanelMenu()
         panel.onOpenByRevealing = { [weak self] pid in self?.openByRevealing(pid: pid) }
@@ -706,19 +717,34 @@ final class App: NSObject, NSApplicationDelegate {
 
     /// The panel's footer: swap the panel for the settings menu.
     ///
-    /// The panel is still closing when its action fires, so the settings menu
-    /// is popped a moment later, by hand, under the same button. Not through
-    /// the attached menu: that one asks the current event which menu to build,
-    /// and the event is the click on the footer — a left click, so the panel.
+    /// The footer's view fires this while the panel is still tracking, and a
+    /// menu popped while another is closing is dropped without a word
+    /// (measured 2026-09-23: a fixed 0.15s wait opened nothing). So the pop
+    /// waits for the panel's own did-close. Not through the attached menu:
+    /// that one asks the current event which menu to build, and the event is
+    /// the click on the footer — a left click, so the panel again.
     @objc private func openSettings() {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
+        menuLog.notice("settings requested from the panel (panel open: \(self.panelOpen, privacy: .public))")
+        if panelOpen {
+            settingsRequested = true
+        } else {
+            popSettings()
+        }
+    }
+
+    private func popSettings() {
+        // Off this turn of the run loop: the did-close callback runs inside
+        // the old menu's teardown.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
             guard let self else { return }
             let menu = NSMenu()
             menu.autoenablesItems = false
             self.buildMenu(menu)
+            menuLog.notice("popping the settings menu (\(menu.items.count, privacy: .public) rows)")
             self.handle.draw(hidden: false, style: self.handleStyle)
             // Returns when the menu has closed, like a tracked press would.
             self.controller.popUp(menu)
+            menuLog.notice("settings menu closed")
             self.handle.draw(hidden: self.isHidden, style: self.handleStyle)
             self.refreshSnapshots()
         }
