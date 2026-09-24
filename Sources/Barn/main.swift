@@ -719,11 +719,12 @@ final class App: NSObject, NSApplicationDelegate {
     }
 
     /// Left click drops the barn's contents down as a menu: every app, ticked
-    /// when it is out on the bar and unticked when it is in the barn. Clicking
-    /// a ticked row puts that icon in the barn; an unticked row opens the app's
-    /// own live menu, with "Show on the Bar" at the top of it. Nothing moves
-    /// and nothing disappears — the whole point of presenting them here rather
-    /// than shuffling the bar.
+    /// when it is out on the bar and unticked when it is in the barn. The tick
+    /// is a target of its own — it has to be, because the rest of the row is
+    /// already the app's live menu — and clicking it moves that icon across
+    /// the line. Nothing moves and nothing disappears on merely opening the
+    /// panel: the whole point of presenting them here rather than shuffling
+    /// the bar.
     private func buildPanel(into menu: NSMenu) {
         let built = panel.build(
             apps: panelApps(),

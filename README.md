@@ -59,7 +59,7 @@ it on, and the command has to be the *installed* binary. A bare `--login`, or
 
 | | |
 |---|---|
-| **Left click** | every menu-bar app, ticked while its icon is on the bar: untick one to put it in the barn, and the ones already in there each carry their own live menu, with **Show on the Bar** at the top of it |
+| **Left click** | every menu-bar app, each with a tick of its own: click the tick to move that icon across the line, click the name for whatever the row does — the live menu of an app in the barn, or the app itself where it publishes none |
 | **Right click** | Panel Order (drag the list into any order; A–Z until you do), reveal behaviour, Icon (double chevron, barn or chevron), Start at Login, Quit |
 
 A warning at the top of the right-click menu — an icon cut off at the screen

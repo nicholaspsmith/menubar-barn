@@ -43,10 +43,6 @@ final class PanelMenu: NSObject, NSMenuDelegate {
         /// an app without one goes straight to its Open row rather than
         /// paying for an accessibility read that will come back empty.
         let hasMenu: Bool
-        /// The row that takes this app out of the barn. It lives at the top
-        /// of the submenu because the row it belongs to carries a submenu,
-        /// and a submenu's parent never fires an action of its own.
-        let show: NSMenuItem
     }
 
     private var ownerForMenu: [ObjectIdentifier: Owner] = [:]
@@ -60,10 +56,11 @@ final class PanelMenu: NSObject, NSMenuDelegate {
     ///   snapshot taken off the main thread. Asking AX here — while the panel
     ///   is being built for display — opens and closes the app's own menu,
     ///   which dismisses ours.
-    /// - Parameter toggleRow: a row wired by the owner to move that app across
-    ///   the line, in whichever direction it currently needs. For an app out
-    ///   on the bar it *is* the row; for one in the barn — whose row carries
-    ///   the app's live menu — it goes at the top of that submenu.
+    /// - Parameter toggleRow: an item wired by the owner to move that app
+    ///   across the line, in whichever direction it currently needs. It is
+    ///   never added to a menu: the row's tick fires its action directly, so
+    ///   that the tick is a target of its own and the rest of the row keeps
+    ///   doing what it did.
     /// - Parameter settingsRow: the footer, wired by the owner to open the
     ///   settings menu in this one's place. Dressed as a caption, but a live row:
     ///   text that names the other menu might as well take you there.
@@ -82,32 +79,32 @@ final class PanelMenu: NSObject, NSMenuDelegate {
         }
 
         for app in apps {
-            // The tick is the whole state of the row: on the bar, or in the
-            // barn. Nothing is greyed for it — a grey row reads as one that
-            // cannot be clicked, and every row here can.
-            guard app.isHidden else {
-                let row = toggleRow(app)
-                row.title = app.name
-                row.state = .on
-                row.image = Self.rowIcon(app.icon, dimmed: false)
-                row.toolTip = "\(app.name) is on the bar. Click to put it in the barn."
-                menu.addItem(row)
-                continue
-            }
             let item = NSMenuItem(title: app.name, action: nil, keyEquivalent: "")
-            item.state = .off
-            item.image = Self.rowIcon(app.icon, dimmed: false)
-            item.toolTip = "\(app.name) is in the barn. Its own menu is in here, with Show on the Bar at the top."
-            let show = toggleRow(app)
-            show.title = "Show on the Bar"
-            show.image = nil
-            let submenu = NSMenu()
-            submenu.autoenablesItems = false
-            submenu.delegate = self
-            ownerForMenu[ObjectIdentifier(submenu)] = Owner(
-                pid: app.pid, name: app.name, hasMenu: hasMenu(app.pid), show: show
-            )
-            item.submenu = submenu
+            if app.isHidden {
+                // In the barn: the row carries the app's own live menu, which
+                // is the whole point of the panel. Its click is spoken for,
+                // which is why the tick has to be a target of its own.
+                let submenu = NSMenu()
+                submenu.autoenablesItems = false
+                submenu.delegate = self
+                ownerForMenu[ObjectIdentifier(submenu)] = Owner(pid: app.pid, name: app.name, hasMenu: hasMenu(app.pid))
+                if hasMenu(app.pid) {
+                    item.submenu = submenu
+                    item.toolTip = "\(app.name) is in the barn. Its own menu is in here; the tick puts its icon back."
+                } else {
+                    // No menu to present, so press the icon itself — for an app
+                    // like Bitwarden that press is how it opens. Falling back to
+                    // revealing the bar was worse than useless: picking the app
+                    // did something unrelated to the app.
+                    item.action = #selector(openApp(_:))
+                    item.target = self
+                    item.representedObject = RowRef(pid: app.pid, index: -1)
+                    item.toolTip = "\(app.name) publishes no menu; clicking the name opens it. The tick puts its icon back."
+                }
+            } else {
+                item.toolTip = "\(app.name) is on the bar. Untick it to put it in the barn."
+            }
+            item.view = PanelRowView(app: app, item: item, toggle: toggleRow(app))
             menu.addItem(item)
         }
 
@@ -148,10 +145,6 @@ final class PanelMenu: NSObject, NSMenuDelegate {
         guard let owner = ownerForMenu[ObjectIdentifier(menu)] else { return }
         let pid = owner.pid
         menu.removeAllItems()
-        // The way back out of the barn, first and always — before any of the
-        // app's own rows, which are the app's business and not Barn's.
-        menu.addItem(owner.show)
-        menu.addItem(.separator())
         for row in owner.hasMenu ? AXMenuDriver.rows(forPID: pid) : [] {
             if row.isSeparator {
                 menu.addItem(.separator())
@@ -175,7 +168,7 @@ final class PanelMenu: NSObject, NSMenuDelegate {
         // produced no rows — is still reachable: pressing its icon is what it
         // does. For an app like Bitwarden that press is how it opens.
         // Never leave a hidden app with no way in.
-        if menu.items.count <= 2 {
+        if menu.items.isEmpty {
             let open = NSMenuItem(title: "Open \(owner.name)", action: #selector(openApp(_:)), keyEquivalent: "")
             open.target = self
             open.representedObject = RowRef(pid: pid, index: -1)
@@ -264,5 +257,184 @@ private final class HintView: NSView {
         // did-close is what carries it out.
         NSApp.sendAction(action, to: item.target, from: item)
         item.menu?.cancelTracking()
+    }
+}
+
+/// One app's row: a tick that takes clicks of its own, then the app's icon
+/// and name, then the submenu arrow where there is a submenu.
+///
+/// A view rather than a plain row because the two halves do different things.
+/// A row in the barn carries the app's live menu, so its click is already
+/// spoken for — the tick cannot be the row's action as well, and a tick you
+/// can only read is not a switch. So the row draws itself: clicks in the
+/// leading strip move the icon across the line, clicks anywhere else do
+/// whatever that row did before, and the menu's own tracking still opens the
+/// submenu on hover.
+///
+/// Everything AppKit would have drawn has to be drawn here, highlight
+/// included, which is why the metrics below are spelled out rather than
+/// inherited.
+private final class PanelRowView: NSView {
+    /// The leading strip that belongs to the tick. Wider than the glyph: a
+    /// 12pt target is a miss waiting to happen, and there is nothing else
+    /// out here to hit by accident.
+    private static let tickZone: CGFloat = 32
+    /// Where the icon starts, and where the title starts after it. The menu's
+    /// own text inset is 14pt; these keep the same rhythm with the tick ahead
+    /// of them.
+    private static let iconX: CGFloat = 32
+    private static let titleX: CGFloat = 56
+    private static let arrowRoom: CGFloat = 22
+    private static let height: CGFloat = 22
+    private static let box = NSRect(x: 9, y: 5, width: 13, height: 13)
+
+    private let app: PanelApp
+    private weak var item: NSMenuItem?
+    private let toggle: NSMenuItem
+    private var hot = false
+    private var tickHot = false
+
+    /// A row for an app out on the bar has no menu of its own to show and
+    /// nothing else to do, so its whole width is the switch. A dead click in
+    /// a menu is worse than a redundant one.
+    private var bodyIsTheSwitch: Bool { !app.isHidden }
+
+    init(app: PanelApp, item: NSMenuItem, toggle: NSMenuItem) {
+        self.app = app
+        self.item = item
+        self.toggle = toggle
+        let title = NSAttributedString(string: app.name, attributes: [.font: NSFont.menuFont(ofSize: 0)])
+        let width = Self.titleX + ceil(title.size().width) + Self.arrowRoom
+        super.init(frame: NSRect(x: 0, y: 0, width: width, height: Self.height))
+        autoresizingMask = [.width]
+        setAccessibilityRole(.menuItem)
+        setAccessibilityLabel("\(app.name), \(app.isHidden ? "in the barn" : "on the bar")")
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    // MARK: - Drawing
+
+    override func draw(_ dirtyRect: NSRect) {
+        let highlighted = hot || item?.isHighlighted == true
+        if highlighted {
+            NSColor.selectedContentBackgroundColor.setFill()
+            NSBezierPath(roundedRect: bounds.insetBy(dx: 5, dy: 0), xRadius: 4, yRadius: 4).fill()
+        }
+        drawTick(highlighted: highlighted)
+        if let icon = app.icon {
+            icon.draw(in: NSRect(x: Self.iconX, y: 3, width: 16, height: 16),
+                      from: .zero, operation: .sourceOver, fraction: 1)
+        }
+        let colour: NSColor = highlighted ? .selectedMenuItemTextColor : .labelColor
+        NSAttributedString(string: app.name, attributes: [
+            .font: NSFont.menuFont(ofSize: 0),
+            .foregroundColor: colour,
+        ]).draw(at: NSPoint(x: Self.titleX, y: 3))
+        if item?.submenu != nil { drawArrow(colour: colour) }
+    }
+
+    /// A box, not a bare checkmark: a checkmark says what the state is, and a
+    /// box says you may change it — which is the whole point of giving the
+    /// tick its own target.
+    private func drawTick(highlighted: Bool) {
+        let ticked = !app.isHidden
+        let box = NSBezierPath(roundedRect: Self.box, xRadius: 3.5, yRadius: 3.5)
+        if ticked {
+            (highlighted ? NSColor.selectedMenuItemTextColor : NSColor.controlAccentColor).setFill()
+            box.fill()
+        } else {
+            (highlighted ? NSColor.selectedMenuItemTextColor : NSColor.tertiaryLabelColor).setStroke()
+            box.lineWidth = 1
+            box.stroke()
+        }
+        if tickHot, !ticked {
+            NSColor.tertiaryLabelColor.withAlphaComponent(0.25).setFill()
+            box.fill()
+        }
+        guard ticked else { return }
+        let mark = NSBezierPath()
+        mark.move(to: NSPoint(x: Self.box.minX + 3, y: Self.box.midY))
+        mark.line(to: NSPoint(x: Self.box.minX + 5.4, y: Self.box.minY + 3.4))
+        mark.line(to: NSPoint(x: Self.box.maxX - 2.8, y: Self.box.maxY - 3.4))
+        mark.lineWidth = 1.8
+        mark.lineCapStyle = .round
+        mark.lineJoinStyle = .round
+        (highlighted ? NSColor.selectedContentBackgroundColor : .white).setStroke()
+        mark.stroke()
+    }
+
+    private func drawArrow(colour: NSColor) {
+        let x = bounds.maxX - 16
+        let path = NSBezierPath()
+        path.move(to: NSPoint(x: x, y: bounds.midY + 3.5))
+        path.line(to: NSPoint(x: x + 3.5, y: bounds.midY))
+        path.line(to: NSPoint(x: x, y: bounds.midY - 3.5))
+        path.lineWidth = 1.5
+        path.lineCapStyle = .round
+        path.lineJoinStyle = .round
+        colour.setStroke()
+        path.stroke()
+    }
+
+    // MARK: - Tracking
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.forEach(removeTrackingArea)
+        addTrackingArea(NSTrackingArea(
+            rect: bounds,
+            options: [.mouseEnteredAndExited, .mouseMoved, .activeAlways, .inVisibleRect],
+            owner: self
+        ))
+    }
+
+    override func mouseEntered(with event: NSEvent) { hot = true; updateTickHot(event); needsDisplay = true }
+    override func mouseMoved(with event: NSEvent) { updateTickHot(event) }
+
+    override func mouseExited(with event: NSEvent) {
+        hot = false
+        tickHot = false
+        needsDisplay = true
+    }
+
+    private func updateTickHot(_ event: NSEvent) {
+        let over = isOverTick(event)
+        guard over != tickHot else { return }
+        tickHot = over
+        needsDisplay = true
+    }
+
+    private func isOverTick(_ event: NSEvent) -> Bool {
+        convert(event.locationInWindow, from: nil).x < Self.tickZone
+    }
+
+    // MARK: - Clicks
+
+    /// The tick's strip moves the icon; the rest of the row does whatever the
+    /// row does — open the app's own menu, open the app, or, for a row that
+    /// does none of those, move the icon as well. A row with a submenu is
+    /// left alone out there: the submenu is already open under the pointer,
+    /// and closing the panel on the way to nothing would be a surprise.
+    override func mouseUp(with event: NSEvent) {
+        guard let item else { return }
+        if isOverTick(event) || (bodyIsTheSwitch && item.submenu == nil) {
+            fire(toggle)
+        } else if item.action != nil {
+            fire(item)
+        }
+    }
+
+    override func accessibilityPerformPress() -> Bool {
+        fire(toggle)
+        return true
+    }
+
+    private func fire(_ target: NSMenuItem) {
+        guard let action = target.action else { return }
+        // Action first, then dismiss: the owner notes the request and the
+        // menu's own did-close is what carries it out.
+        NSApp.sendAction(action, to: target.target, from: target)
+        item?.menu?.cancelTracking()
     }
 }
