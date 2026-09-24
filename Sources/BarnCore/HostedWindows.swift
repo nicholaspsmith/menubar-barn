@@ -34,46 +34,23 @@ public struct HostedSlotReading: Equatable, Sendable {
 /// Measured 2026-09-22 on macOS 27: four windows, twelve children each;
 /// window 1 carried the buttons, windows 0, 2 and 3 carried application
 /// elements. Which index it is is not documented and not worth relying on, so
-/// Barn reads the windows in turn and merges what they say.
+/// Barn reads the windows in turn and takes the first that names its items.
 public enum HostedWindows {
-    /// One slot per position, with the identifier from whichever window
-    /// carried one. Frames and order come from the first window that listed
-    /// the slot; a window that lists a slot the others missed still
-    /// contributes it.
-    public static func merge(_ windows: [[HostedSlotReading]]) -> [HostedSlotReading] {
-        /// A slot is its owner and where it sits: two items never share both.
-        struct Key: Hashable {
-            let pid: pid_t
-            let minX: Int
-            let width: Int
-
-            init(_ reading: HostedSlotReading) {
-                pid = reading.pid
-                minX = Int(reading.frame.minX.rounded())
-                width = Int(reading.frame.width.rounded())
-            }
-        }
-
-        var order: [Key] = []
-        var merged: [Key: HostedSlotReading] = [:]
-        for window in windows {
-            for reading in window {
-                let key = Key(reading)
-                guard let existing = merged[key] else {
-                    order.append(key)
-                    merged[key] = reading
-                    continue
-                }
-                if existing.identifier == nil, reading.identifier != nil {
-                    merged[key] = HostedSlotReading(
-                        pid: existing.pid,
-                        frame: existing.frame,
-                        identifier: reading.identifier
-                    )
-                }
-            }
-        }
-        return order.compactMap { merged[$0] }
+    /// The one window to trust: the first that names the items belonging to
+    /// `pid`, else the first that lists anything at all.
+    ///
+    /// Merging the windows looks tempting — they publish the same bar — but
+    /// they are separate snapshots, and while the agent is reflowing they
+    /// disagree. Measured 2026-09-24 mid-reflow: four windows gave four
+    /// different positions for the same icons, and merging them by position
+    /// turned one icon into two, at both its old and its new place. One
+    /// window is a consistent picture of the bar; several are not.
+    /// - Returns: the index of that window, or nil when none listed anything.
+    ///   An index rather than the slots themselves, because the « the caller
+    ///   read from the same window has to come with them.
+    public static func pickIndex(_ windows: [[HostedSlotReading]], naming pid: pid_t) -> Int? {
+        if let named = windows.firstIndex(where: { identified($0, for: pid) }) { return named }
+        return windows.firstIndex { !$0.isEmpty }
     }
 
     /// Whether every slot belonging to `pid` has been named yet — the point

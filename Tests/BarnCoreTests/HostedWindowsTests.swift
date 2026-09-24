@@ -17,51 +17,36 @@ import XCTest
 /// carry `BarnLine`; windows 0, 2 and 3 answered with the application element
 /// and carried nothing. Reading `windows.first` — window 0 — is how Barn lost
 /// sight of its own line, and with it the handle.
-final class HostedWindowMergeTests: XCTestCase {
+///
+/// They are separate snapshots, though, so the named one is taken whole
+/// rather than merged with the rest: measured 2026-09-24 mid-reflow, the four
+/// windows gave four different positions for the same icons.
+final class HostedWindowPickTests: XCTestCase {
     private func slot(_ pid: pid_t, _ x: CGFloat, _ width: CGFloat, _ identifier: String? = nil) -> HostedSlotReading {
         HostedSlotReading(pid: pid, frame: ItemFrame(minX: x, width: width), identifier: identifier)
     }
 
-    func testIdentifierComesFromWhicheverWindowCarriesIt() {
-        let merged = HostedWindows.merge([
-            [slot(10, 375, 796), slot(20, 1179, 34)],
-            [slot(10, 375, 796, "BarnLine"), slot(20, 1179, 34)],
-        ])
-        XCTAssertEqual(merged.count, 2)
-        XCTAssertEqual(merged.first?.identifier, "BarnLine")
+    func testTheNamedWindowIsTheOneUsed() {
+        let anonymous = [slot(10, 375, 796), slot(20, 1179, 34)]
+        let named = [slot(10, 375, 796, "BarnLine"), slot(20, 1179, 34)]
+        XCTAssertEqual(HostedWindows.pickIndex([anonymous, named, anonymous], naming: 10), 1)
     }
 
-    func testOneSlotPerPositionHoweverManyWindowsRepeatIt() {
-        let window = [slot(10, 375, 796, "BarnLine"), slot(20, 1179, 34)]
-        XCTAssertEqual(HostedWindows.merge([window, window, window, window]).count, 2)
+    func testWithNothingNamedTheFirstWindowThatListedAnythingWins() {
+        let anonymous = [slot(10, 375, 796), slot(20, 1179, 34)]
+        XCTAssertEqual(HostedWindows.pickIndex([[], anonymous, anonymous], naming: 10), 1)
     }
 
-    func testOneAppsThreeItemsStayApart() {
-        // Barn's own items all share its pid; only the frame tells them apart.
-        let merged = HostedWindows.merge([
-            [slot(10, 698, 34), slot(10, 1145, 17), slot(10, 1162, 17)],
-            [slot(10, 698, 34, "BarnHandle"), slot(10, 1145, 17, "BarnLineB"), slot(10, 1162, 17, "BarnLine")],
-        ])
-        XCTAssertEqual(merged.count, 3)
-        XCTAssertEqual(merged.map(\.identifier), ["BarnHandle", "BarnLineB", "BarnLine"])
+    func testNoWindowListedAnything() {
+        XCTAssertNil(HostedWindows.pickIndex([[], []], naming: 10))
     }
 
-    func testFirstSeenOrderAndFrameAreKept() {
-        let merged = HostedWindows.merge([
-            [slot(20, 1179, 34), slot(10, 375, 796)],
-            [slot(10, 375, 796, "BarnLine"), slot(20, 1179, 34, "Other")],
-        ])
-        XCTAssertEqual(merged.map(\.frame.minX), [1179, 375])
-        XCTAssertEqual(merged.map(\.identifier), ["Other", "BarnLine"])
-    }
-
-    func testASlotOnlyOneWindowListsIsStillCollected() {
-        let merged = HostedWindows.merge([
-            [slot(10, 375, 796)],
-            [slot(10, 375, 796, "BarnLine"), slot(30, 1213, 38)],
-        ])
-        XCTAssertEqual(merged.count, 2)
-        XCTAssertEqual(merged.last?.pid, 30)
+    func testAWindowNamingOnlySomeOfOursIsNotTheNamedOne() {
+        // Barn has three items; a window that named one and lost the others
+        // is mid-reflow, and the next one may have them all.
+        let partial = [slot(10, 375, 796, "BarnLine"), slot(10, 698, 34)]
+        let whole = [slot(10, 375, 796, "BarnLine"), slot(10, 698, 34, "BarnHandle")]
+        XCTAssertEqual(HostedWindows.pickIndex([partial, whole], naming: 10), 1)
     }
 
     func testIdentifiedIsTrueOnlyWhenEveryOneOfOursIsNamed() {

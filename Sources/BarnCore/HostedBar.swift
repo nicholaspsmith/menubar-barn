@@ -138,3 +138,47 @@ public enum HostedBar {
         return overlaps ? .hidden : .visible
     }
 }
+
+// MARK: - The arrangement of our own three items
+
+extension HostedBar {
+    /// Whether Barn's own items are still in the only order that works.
+    ///
+    /// Every width the hide computes is measured from A's right edge, and
+    /// assumes B sits immediately left of A and the handle immediately right
+    /// of it. The agent re-places the whole bar on a resolution change, and
+    /// when it puts them back in a different order the arithmetic is not
+    /// merely wrong, it is meaningless: measured 2026-09-24, A was dropped,
+    /// B was placed 540pt wide in the middle of the visible strip — a hole
+    /// in the bar — and the handle sat left of both, off the display.
+    ///
+    /// `nil` for A or the handle means the agent gave it no slot.
+    public static func arrangement(a: ItemFrame?, b: ItemFrame?, handle: ItemFrame?) -> Arrangement {
+        guard let a else { return .broken("the line has no slot") }
+        guard let handle else { return .broken("the handle has no slot") }
+        // The handle must sit right of A, in the visible strip. Left of it,
+        // A's own width pushes it clear off the display and takes the only
+        // control Barn has with it.
+        guard handle.minX >= a.maxX - 1 else { return .broken("the handle is left of the line") }
+        // B reaches from A's left edge down past the floor. Right of A it
+        // reaches into the icons instead.
+        if let b, b.maxX > a.minX + 1 { return .broken("the second line is right of the line") }
+        return .sound
+    }
+
+    /// True for a line the agent has *placed* while it is wide: a line is
+    /// meant to be dropped or to sit under the frontmost app's menus, and
+    /// one left anywhere else draws its whole width as empty bar.
+    public static func isStrandedLine(_ frame: ItemFrame?) -> Bool {
+        guard let frame else { return false }
+        return frame.width > BarnGeometry.showWidth + slotPadding + 1
+    }
+
+    public enum Arrangement: Equatable, Sendable {
+        /// A placed, B dropped or immediately left of it, handle right of it.
+        case sound
+        /// Something is where it cannot do its job. Carries what moved, for
+        /// the log.
+        case broken(String)
+    }
+}

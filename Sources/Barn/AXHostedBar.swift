@@ -64,7 +64,9 @@ enum AXHostedBar {
     /// Reads the agent's windows in turn rather than just the first: they all
     /// publish the same bar, but only one of them hands back the apps'
     /// status-item buttons, and so the identifiers Barn labels its own items
-    /// with. See `HostedWindows`. Stops as soon as every slot of
+    /// with. The first window that names them is the one used, whole — they
+    /// are separate snapshots and disagree mid-reflow, so mixing them
+    /// invents slots. See `HostedWindows`. Stops as soon as every slot of
     /// `identifying` has a name, which is normally the second window.
     static func layout(identifying ownPID: pid_t = ProcessInfo.processInfo.processIdentifier) -> HostedLayout? {
         guard let pid = agentPID, AXMenuBar.isTrusted else { return nil }
@@ -74,17 +76,17 @@ enum AXHostedBar {
               let bar = windows.lazy.compactMap({ frame(of: $0) }).first
         else { return nil }
 
-        var readings: [[HostedSlotReading]] = []
-        var chevron: ItemFrame?
+        var readings: [(slots: [HostedSlotReading], chevron: ItemFrame?)] = []
         for window in windows {
             var reading: [HostedSlotReading] = []
+            var chevron: ItemFrame?
             for child in (attribute(window, kAXChildrenAttribute) as? [AXUIElement]) ?? [] {
                 guard let frame = frame(of: child) else { continue }
                 // The « button is the agent's own, a direct child of the window
                 // rather than a slot holding someone's item. Its description is
                 // localized, so the role and owner are what identify it.
                 if role(of: child) == kAXButtonRole as String, owner(of: child) == pid {
-                    chevron = chevron ?? frame
+                    chevron = frame
                     continue
                 }
                 guard let item = (attribute(child, kAXChildrenAttribute) as? [AXUIElement])?.first,
@@ -99,12 +101,16 @@ enum AXHostedBar {
                     identifier: attribute(item, kAXIdentifierAttribute) as? String
                 ))
             }
-            readings.append(reading)
-            if HostedWindows.identified(HostedWindows.merge(readings), for: ownPID) { break }
+            readings.append((reading, chevron))
+            if HostedWindows.identified(reading, for: ownPID) { break }
         }
-        let slots = HostedWindows.merge(readings).map {
+        guard let index = HostedWindows.pickIndex(readings.map(\.slots), naming: ownPID) else {
+            return HostedLayout(slots: [], chevron: readings.first?.chevron, barWidth: bar.width)
+        }
+        let slots = readings[index].slots.map {
             HostedSlot(pid: $0.pid, frame: $0.frame, identifier: $0.identifier)
         }
+        let chevron = readings[index].chevron
         return HostedLayout(slots: slots, chevron: chevron, barWidth: bar.width)
     }
 

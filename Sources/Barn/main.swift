@@ -276,10 +276,10 @@ final class App: NSObject, NSApplicationDelegate {
     private var collapseAttempts = 0
     private var collapseBoundary: CGFloat = 0
     private static let collapseAttemptLimit = 3
-    /// Re-settles spent trying to bring the handle back onto the bar, reset
-    /// the moment it has a slot again.
-    private var handleRescues = 0
-    private static let handleRescueLimit = 3
+    /// Re-settles spent putting our own three items back in order, reset the
+    /// moment they are.
+    private var arrangementRepairs = 0
+    private static let arrangementRepairLimit = 3
 
     private func showLine() {
         line.show()
@@ -366,7 +366,10 @@ final class App: NSObject, NSApplicationDelegate {
                 attempt.verified = true
                 self.hostedHide = attempt
                 self.refreshSnapshots()
-                self.rescueHandleIfLost(in: layout)
+                // Our own items first: a « raised by our lines being out of
+                // order is not somebody else's icon to hide.
+                if self.repairArrangement(in: layout) { return }
+                self.supersedeChevron(in: layout, attempt: attempt)
             }
             let aPlaced = self.ownLineSlot(in: layout) != nil
             let bPlaced = self.ownSlot(Line.secondIdentifier, in: layout) != nil
@@ -463,31 +466,81 @@ final class App: NSObject, NSApplicationDelegate {
         Arranger.dragOwn(fromX: handle.frame.minX + handle.frame.width / 2, toX: a.frame.maxX + 4)
     }
 
-    /// Re-settles when the handle has gone off the bar entirely.
+    /// Re-settles when our own three items are no longer in the only order
+    /// that works: B, then A, then the handle.
     ///
-    /// The one failure a user cannot click their way out of. The handle is
-    /// the only control Barn has, and if the agent ranks it left of A — where
-    /// A's own width pushes it clear off the display — it is gone until the
-    /// app is relaunched. `placeHandleBesideLine` cannot help either: it
-    /// drags the handle from where it sits, and an item with no slot has
+    /// Every width the hide computes is measured from A's right edge and
+    /// assumes that order. The agent re-places the entire bar on a
+    /// resolution change, and when it hands the items back in a different
+    /// order the arithmetic is not merely off, it is meaningless. Measured
+    /// 2026-09-24, after the display dropped from 2x to 1x: A dropped
+    /// altogether, B placed 540pt wide in the middle of the visible strip —
+    /// a hole in the bar — and the handle at 410, left of both and off the
+    /// display. The read-back saw only its own widths, nudged them four
+    /// times and gave up with the system « showing, every five seconds.
+    ///
+    /// So check the order, and when it is wrong do what a launch does: go
+    /// narrow, let the agent place everything again, and drag B and the
+    /// handle back beside A. `placeHandleBesideLine` cannot do it alone —
+    /// it drags the handle from where it sits, and an item with no slot has
     /// nowhere to drag from.
     ///
-    /// So do what a launch does: go narrow, let the agent place everything
-    /// again, and drag the handle back beside A. Bounded, because a re-settle
-    /// flashes the hidden block back for a moment and a bar that will not
-    /// take the handle must not flash it on every poll.
-    private func rescueHandleIfLost(in layout: HostedLayout) {
-        // Only meaningful against a layout we can read our own line in: no A
-        // means the read told us nothing, not that the handle is gone.
-        guard isHidden, ownLineSlot(in: layout) != nil else { return }
-        guard ownSlot(Self.handleIdentifier, in: layout) == nil else {
-            handleRescues = 0
-            return
+    /// Bounded: a re-settle flashes the hidden block back for a moment, and
+    /// a bar that will not take the arrangement must not flash it on every
+    /// poll.
+    /// - Returns: true when it acted, so the caller leaves the bar alone.
+    @discardableResult
+    private func repairArrangement(in layout: HostedLayout) -> Bool {
+        guard isHidden else { return false }
+        let a = ownLineSlot(in: layout)?.frame
+        let b = ownSlot(Line.secondIdentifier, in: layout)?.frame
+        let handleSlot = ownSlot(Self.handleIdentifier, in: layout)?.frame
+        // A read with none of our items in it says nothing about where they
+        // are — the agent mid-reflow, or the login window's own bar.
+        guard a != nil || b != nil || handleSlot != nil else { return false }
+        guard case let .broken(reason) = HostedBar.arrangement(a: a, b: b, handle: handleSlot) else {
+            arrangementRepairs = 0
+            return false
         }
-        guard handleRescues < Self.handleRescueLimit else { return }
-        handleRescues += 1
-        arrangeLog.error("handle: no slot on the bar — re-settling to put it back (attempt \(self.handleRescues, privacy: .public))")
+        guard arrangementRepairs < Self.arrangementRepairLimit else {
+            // Out of tries. Never leave a wide line the agent has *placed*:
+            // it draws its whole width as empty bar, which is the one
+            // failure that looks like Barn broke the menu bar. Give the
+            // icons back instead and say why — hiding nothing is a better
+            // resting state than a hole.
+            if HostedBar.isStrandedLine(a) || HostedBar.isStrandedLine(b) {
+                arrangeLog.error("arrangement: \(reason, privacy: .public), and a line is stranded on the bar; showing the icons rather than leaving a gap")
+                isHidden = false
+                handle.draw(hidden: false, style: handleStyle)
+                showLine()
+                return true
+            }
+            return false
+        }
+        arrangementRepairs += 1
+        arrangeLog.error("arrangement: \(reason, privacy: .public) — re-settling (attempt \(self.arrangementRepairs, privacy: .public))")
         settleThenApply()
+        return true
+    }
+
+    /// Stand in for the agent's «, rather than leaving it up.
+    ///
+    /// Barn's whole claim on macOS 27 is that its own « replaces the
+    /// system's. When the read-back has run out of widths to try and a «
+    /// is still showing with our three items where they belong, the item in
+    /// the band is somebody's icon, and no width of ours will move it — the
+    /// loop used to log "giving up" and leave the system « on the bar,
+    /// every five seconds, forever.
+    ///
+    /// So do what the agent is doing, but into the barn: hide the leftmost
+    /// visible icon, exactly as ticking it off in Visible Icons would, and
+    /// let the next poll check again. `collapse` bounds itself to three
+    /// tries against one boundary, so a bar that cannot be helped is left
+    /// alone rather than emptied one icon at a time.
+    private func supersedeChevron(in layout: HostedLayout, attempt: HostedHide) {
+        guard isHidden, layout.chevron != nil, attempt.retries >= Self.hostedRetries else { return }
+        arrangeLog.notice("chevron: the « is still up with the lines in place; taking the leftmost icon into the barn instead")
+        collapse(rightEdge: attempt.rightEdge, boundary: attempt.boundary)
     }
 
     /// Stay narrow, let the menu bar place us, then apply the real state.
