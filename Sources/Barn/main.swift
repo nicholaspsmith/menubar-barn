@@ -413,7 +413,7 @@ final class App: NSObject, NSApplicationDelegate {
     /// The bar is full for the frontmost app: A cannot sit right of the
     /// app's menus. Do what the agent would, but into the barn: hide the
     /// leftmost visible icon that is not ours, and check again once that
-    /// has settled. Persistent, like any hide; Visible Icons undoes it.
+    /// has settled. Persistent, like any hide; ticking it in the panel undoes it.
     private func collapse(rightEdge: CGFloat, boundary: CGFloat) {
         if collapseBoundary != boundary { collapseBoundary = boundary; collapseAttempts = 0 }
         guard collapseAttempts < Self.collapseAttemptLimit else { return }
@@ -533,7 +533,7 @@ final class App: NSObject, NSApplicationDelegate {
     /// every five seconds, forever.
     ///
     /// So do what the agent is doing, but into the barn: hide the leftmost
-    /// visible icon, exactly as ticking it off in Visible Icons would, and
+    /// visible icon, exactly as unticking it in the panel would, and
     /// let the next poll check again. `collapse` bounds itself to three
     /// tries against one boundary, so a bar that cannot be helped is left
     /// alone rather than emptied one icon at a time.
@@ -611,9 +611,9 @@ final class App: NSObject, NSApplicationDelegate {
         if !menu.items.isEmpty { menu.addItem(.separator()) }
 
         if AXMenuBar.isTrusted {
-            let manage = NSMenuItem(title: "Visible Icons", action: nil, keyEquivalent: "")
-            manage.submenu = buildManageMenu()
-            menu.addItem(manage)
+            // No visibility checklist here: every row of the panel carries its
+            // own tick, and a second list of the same switches is somewhere
+            // for the two to disagree.
             menu.addItem(actionItem("Panel Order…", #selector(showPanelOrder)))
         }
 
@@ -644,36 +644,7 @@ final class App: NSObject, NSApplicationDelegate {
         NSMenuItem(title: title, action: nil, keyEquivalent: "")
     }
 
-    /// One row per menu-bar app, ticked when Barn is hiding it. Selecting
-    /// a row moves that icon across the line.
-    ///
-    /// A checklist rather than a settings window with an Apply button: each
-    /// toggle is a single drag that either lands or reports why not, so there is
-    /// no pending state to get out of step with the bar.
-    private func buildManageMenu() -> NSMenu {
-        let menu = NSMenu()
-        let geometry = MenuBarGeometry.current()
-        let apps = menuBarApps()
-            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-
-        if apps.isEmpty {
-            menu.addItem(disabledItem("No menu bar apps found"))
-            return menu
-        }
-
-        for app in apps {
-            let hidden = app.placement(in: geometry) == .hidden
-            let item = actionItem(app.name, #selector(toggleAppHidden(_:)))
-            // A tick means the icon is on the bar; unticked means it is in the barn.
-            item.state = hidden ? .off : .on
-            item.representedObject = AppRef(pid: app.pid, name: app.name, isHidden: hidden)
-            menu.addItem(item)
-        }
-        return menu
-    }
-
-    /// The apps the checklist and the panel list: one per process, from the
-    /// last sweep.
+    /// The apps the panel lists: one per process, from the last sweep.
     ///
     /// One row per process, and Control Center is one process owning several
     /// items — Wi‑Fi, Bluetooth, the clock, itself. A single tick cannot say
@@ -747,17 +718,22 @@ final class App: NSObject, NSApplicationDelegate {
         handle.draw(hidden: isHidden, style: style)
     }
 
-    /// Left click drops the barn's contents down as a menu: every app, the
-    /// hidden ones each with its own real menu inside, the ones still out on
-    /// the bar greyed until clicked in. Nothing moves and nothing disappears —
-    /// the whole point of presenting them here rather than shuffling the bar.
+    /// Left click drops the barn's contents down as a menu: every app, ticked
+    /// when it is out on the bar and unticked when it is in the barn. Clicking
+    /// a ticked row puts that icon in the barn; an unticked row opens the app's
+    /// own live menu, with "Show on the Bar" at the top of it. Nothing moves
+    /// and nothing disappears — the whole point of presenting them here rather
+    /// than shuffling the bar.
     private func buildPanel(into menu: NSMenu) {
         let built = panel.build(
             apps: panelApps(),
             hasMenu: { [menuPIDs] in menuPIDs.contains($0) },
-            hideRow: { [unowned self] app in
-                let row = self.actionItem(app.name, #selector(self.tuckIn(_:)))
-                row.representedObject = AppRef(pid: app.pid, name: app.name, isHidden: false)
+            toggleRow: { [unowned self] app in
+                // Out on the bar, `tuckIn` — it knows the icon that is already
+                // left of the line and needs a re-settle rather than a drag.
+                // In the barn, the plain move back across.
+                let row = self.actionItem(app.name, app.isHidden ? #selector(self.toggleAppHidden(_:)) : #selector(self.tuckIn(_:)))
+                row.representedObject = AppRef(pid: app.pid, name: app.name, isHidden: app.isHidden)
                 return row
             },
             settingsRow: actionItem("", #selector(openSettings))

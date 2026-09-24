@@ -207,6 +207,6 @@ if stranded.isEmpty, faults.isEmpty {
     exit(0)
 }
 if !stranded.isEmpty {
-    print("\(stranded.count) icon(s) stranded — ⌘-drag them right, or use Manage Icons.")
+    print("\(stranded.count) icon(s) stranded — ⌘-drag them right, or tick them in Barn's panel.")
 }
 exit(1)

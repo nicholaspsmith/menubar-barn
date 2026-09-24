@@ -40,12 +40,13 @@ First-run setup
      apps' menus, and to move an icon across the line. Until granted, hiding
      still works; the menu shows "⚠ Grant Accessibility…".
   2. Drag the chevron (⌘-drag) so everything you want hidden sits to its LEFT.
-     Or use right-click ▸ Manage Icons and let it do the dragging.
+     Or left-click it and untick whatever you would rather not see.
   3. Optional: menu ▸ Start at Login.
 
 Using it
-  Left click   the hidden icons, each with its own live menu
-  Right click  Manage Icons, reveal behaviour, Start at Login, Quit
+  Left click   every app, ticked while its icon is on the bar; the hidden
+               ones each carry their own live menu
+  Right click  panel order, reveal behaviour, Icon, Start at Login, Quit
 
 If you also run Ice or Bartender, quit it first — two managers fighting over
 the same icons will strand one. See "Migrating off Ice" in README.md.

@@ -35,8 +35,8 @@ when prompted — it is how Barn reads where icons sit and what hidden apps'
 menus contain.
 
 Then **⌘-drag the barn** so everything you want hidden sits to its left. Or let
-the app do the dragging: right-click ▸ Visible Icons, where a tick means the
-icon stays on the bar and unticking it puts it in the barn.
+the app do the dragging: left-click it and untick whatever you would rather not
+see — every app is a row, ticked while its icon is out on the bar.
 
 Requires macOS 13+ and Swift 5.9; macOS 27 needs the Accessibility grant for
 hiding itself, not just for the menus (see below). Run only one menu-bar
@@ -59,8 +59,8 @@ it on, and the command has to be the *installed* binary. A bare `--login`, or
 
 | | |
 |---|---|
-| **Left click** | every menu-bar app: the ones in the barn each with its own live menu, the ones still out on the bar greyed — click one to bring it in |
-| **Right click** | Visible Icons (ticked = on the bar), Panel Order (drag the list into any order; A–Z until you do), reveal behaviour, Icon (double chevron, barn or chevron), Start at Login, Quit |
+| **Left click** | every menu-bar app, ticked while its icon is on the bar: untick one to put it in the barn, and the ones already in there each carry their own live menu, with **Show on the Bar** at the top of it |
+| **Right click** | Panel Order (drag the list into any order; A–Z until you do), reveal behaviour, Icon (double chevron, barn or chevron), Start at Login, Quit |
 
 A warning at the top of the right-click menu — an icon cut off at the screen
 edge, lost in the notch, or stacked on the system « — is also its fix: click
@@ -133,7 +133,7 @@ panel with their live menus instead of the system's.
 When the bar is genuinely full for the app in front — its menus reach past
 where the visible icons start — Barn does what the agent would: it hides
 the leftmost visible icon, into the barn, and checks again. That is a real
-hide, like ticking it off in Visible Icons, and it stays hidden until you
+hide, like unticking it in the panel, and it stays hidden until you
 tick it back; putting it back on every app switch would need a reveal each
 time. To move an icon while the bar is that full, Barn briefly takes the
 menu bar itself (a regular app for a second, with a one-word menu) so the

@@ -25,16 +25,28 @@ struct PanelApp {
 ///
 /// Deliberately a real `NSMenu` rather than a custom panel: submenus, keyboard
 /// navigation, hover, and dismissal all come for free and look like the rest of
-/// the system. Every menu-bar app is a row. An app in the barn has its *actual*
-/// menu as its submenu, read live over the accessibility API, so it stays usable
-/// without any icon moving anywhere. An app still out on the bar is the same row
-/// greyed, with no submenu: clicking it brings the app into the barn, and on the
-/// next open it is an ordinary row. One list, so the whole bar is in view at once
-/// and there is no second menu to go looking in.
+/// the system. Every menu-bar app is a row, ticked when its icon is out on the
+/// bar and unticked when it is in the barn — one switch per app, where the app
+/// is, rather than a second checklist somewhere else to keep in step.
+///
+/// A ticked row has no submenu: clicking it puts that icon in the barn. An
+/// unticked one has the app's *actual* menu as its submenu, read live over the
+/// accessibility API so it stays usable with its icon off the bar, and "Show on
+/// the Bar" sits at the top of it — a submenu's parent never fires an action of
+/// its own, so the row's own click cannot be the way back out. One list, so the
+/// whole bar is in view at once and there is no second menu to go looking in.
 final class PanelMenu: NSObject, NSMenuDelegate {
     private struct Owner {
         let pid: pid_t
         let name: String
+        /// Whether the app publishes a menu at all. Known from the sweep, so
+        /// an app without one goes straight to its Open row rather than
+        /// paying for an accessibility read that will come back empty.
+        let hasMenu: Bool
+        /// The row that takes this app out of the barn. It lives at the top
+        /// of the submenu because the row it belongs to carries a submenu,
+        /// and a submenu's parent never fires an action of its own.
+        let show: NSMenuItem
     }
 
     private var ownerForMenu: [ObjectIdentifier: Owner] = [:]
@@ -48,13 +60,14 @@ final class PanelMenu: NSObject, NSMenuDelegate {
     ///   snapshot taken off the main thread. Asking AX here — while the panel
     ///   is being built for display — opens and closes the app's own menu,
     ///   which dismisses ours.
-    /// - Parameter hideRow: the row for an app that is out on the bar, wired by
-    ///   the owner to the same move that the Visible Icons checklist makes. The
-    ///   panel only dresses it: grey title, dimmed icon, no submenu.
+    /// - Parameter toggleRow: a row wired by the owner to move that app across
+    ///   the line, in whichever direction it currently needs. For an app out
+    ///   on the bar it *is* the row; for one in the barn — whose row carries
+    ///   the app's live menu — it goes at the top of that submenu.
     /// - Parameter settingsRow: the footer, wired by the owner to open the
     ///   settings menu in this one's place. Dressed as a caption, but a live row:
     ///   text that names the other menu might as well take you there.
-    func build(apps: [PanelApp], hasMenu: (pid_t) -> Bool, hideRow: (PanelApp) -> NSMenuItem, settingsRow: NSMenuItem) -> NSMenu {
+    func build(apps: [PanelApp], hasMenu: (pid_t) -> Bool, toggleRow: (PanelApp) -> NSMenuItem, settingsRow: NSMenuItem) -> NSMenu {
         let menu = NSMenu()
         // A row whose only job is to hold a submenu has no action, and automatic
         // enabling greys such rows out: the submenu still opened on hover, but
@@ -69,28 +82,32 @@ final class PanelMenu: NSObject, NSMenuDelegate {
         }
 
         for app in apps {
+            // The tick is the whole state of the row: on the bar, or in the
+            // barn. Nothing is greyed for it — a grey row reads as one that
+            // cannot be clicked, and every row here can.
             guard app.isHidden else {
-                menu.addItem(Self.dressedAsOut(hideRow(app), app: app))
+                let row = toggleRow(app)
+                row.title = app.name
+                row.state = .on
+                row.image = Self.rowIcon(app.icon, dimmed: false)
+                row.toolTip = "\(app.name) is on the bar. Click to put it in the barn."
+                menu.addItem(row)
                 continue
             }
             let item = NSMenuItem(title: app.name, action: nil, keyEquivalent: "")
+            item.state = .off
             item.image = Self.rowIcon(app.icon, dimmed: false)
-            if hasMenu(app.pid) {
-                let submenu = NSMenu()
-                submenu.autoenablesItems = false
-                submenu.delegate = self
-                ownerForMenu[ObjectIdentifier(submenu)] = Owner(pid: app.pid, name: app.name)
-                item.submenu = submenu
-            } else {
-                // No menu to present, so press the icon itself — for an app like
-                // Bitwarden that press is how it opens. Falling back to revealing
-                // the bar was worse than useless: picking the app did something
-                // unrelated to the app.
-                item.action = #selector(openApp(_:))
-                item.target = self
-                item.representedObject = RowRef(pid: app.pid, index: -1)
-                item.toolTip = "\(app.name) publishes no menu; this opens it directly."
-            }
+            item.toolTip = "\(app.name) is in the barn. Its own menu is in here, with Show on the Bar at the top."
+            let show = toggleRow(app)
+            show.title = "Show on the Bar"
+            show.image = nil
+            let submenu = NSMenu()
+            submenu.autoenablesItems = false
+            submenu.delegate = self
+            ownerForMenu[ObjectIdentifier(submenu)] = Owner(
+                pid: app.pid, name: app.name, hasMenu: hasMenu(app.pid), show: show
+            )
+            item.submenu = submenu
             menu.addItem(item)
         }
 
@@ -98,19 +115,6 @@ final class PanelMenu: NSObject, NSMenuDelegate {
         menu.addItem(.separator())
         menu.addItem(Self.dressedAsHint(settingsRow, "Right-click the icon for settings"))
         return menu
-    }
-
-    /// An app that is out on the bar: the same row, greyed. Not a disabled
-    /// item — a disabled item cannot be clicked, and clicking is how it comes in.
-    private static func dressedAsOut(_ item: NSMenuItem, app: PanelApp) -> NSMenuItem {
-        item.attributedTitle = NSAttributedString(string: app.name, attributes: [
-            .font: NSFont.menuFont(ofSize: 0),
-            .foregroundColor: NSColor.disabledControlTextColor,
-        ])
-        item.image = rowIcon(app.icon, dimmed: true)
-        item.submenu = nil
-        item.toolTip = "\(app.name) is out on the bar. Click to bring it into the barn."
-        return item
     }
 
     private static func rowIcon(_ icon: NSImage?, dimmed: Bool) -> NSImage? {
@@ -144,7 +148,11 @@ final class PanelMenu: NSObject, NSMenuDelegate {
         guard let owner = ownerForMenu[ObjectIdentifier(menu)] else { return }
         let pid = owner.pid
         menu.removeAllItems()
-        for row in AXMenuDriver.rows(forPID: pid) {
+        // The way back out of the barn, first and always — before any of the
+        // app's own rows, which are the app's business and not Barn's.
+        menu.addItem(owner.show)
+        menu.addItem(.separator())
+        for row in owner.hasMenu ? AXMenuDriver.rows(forPID: pid) : [] {
             if row.isSeparator {
                 menu.addItem(.separator())
                 continue
@@ -163,10 +171,11 @@ final class PanelMenu: NSObject, NSMenuDelegate {
             item.isEnabled = row.isEnabled
             menu.addItem(item)
         }
-        // An app that looked like it had a menu but produced no rows is still
-        // reachable: pressing its icon is what it does. Never leave a hidden app
-        // with no way in.
-        if menu.items.isEmpty {
+        // An app that publishes no menu — or looked like it had one and
+        // produced no rows — is still reachable: pressing its icon is what it
+        // does. For an app like Bitwarden that press is how it opens.
+        // Never leave a hidden app with no way in.
+        if menu.items.count <= 2 {
             let open = NSMenuItem(title: "Open \(owner.name)", action: #selector(openApp(_:)), keyEquivalent: "")
             open.target = self
             open.representedObject = RowRef(pid: pid, index: -1)
