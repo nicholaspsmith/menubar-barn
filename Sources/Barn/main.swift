@@ -577,6 +577,7 @@ final class App: NSObject, NSApplicationDelegate {
         menu.addItem(login)
 
         menu.addItem(.separator())
+        menu.addItem(AppVersion.menuItem())
         menu.addItem(actionItem("Quit Barn", #selector(quit), key: "q"))
     }
 
