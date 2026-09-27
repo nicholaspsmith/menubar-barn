@@ -8,12 +8,19 @@ without one is refused (`[no release]` in the tip commit is the only exception).
 Versions follow [Semantic Versioning](https://semver.org/). The full rule:
 [StatusItemKit — Releases](https://github.com/nicholaspsmith/StatusItemKit#releases-every-push-is-one).
 
-## [Unreleased]
+## [1.3.0] - 2026-09-26
 
-- fix: the tick is a target of its own
-- feat: the panel's own ticks are the show/hide switch
-- docs: note what a reflow does to the three items, and what it cost
-- fix: keep the system « down by checking the arrangement, not just widths
+### Show and hide from the panel
+
+- Each app's row in the panel now has its own tick: ticked means the icon is out on the menu bar, unticked means it lives in the barn. Click a ticked row to put it away; open an unticked row's menu and choose "Show on the Bar" to bring it back.
+- An app that has no menu of its own gets "Show on the Bar" and "Open <name>".
+- Nothing in the panel is greyed out any more; every row can be clicked.
+- "Visible Icons" is gone from the settings menu; the ticks replace it.
+
+### Fixed
+
+- The tick is its own click target, so it no longer fights the row.
+- The system « stays down reliably: Barn checks the actual arrangement of the bar, not just the widths.
 
 ## [1.2.0] - 2026-09-23
 

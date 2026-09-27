@@ -20,6 +20,8 @@
 
 ---
 
+**Version 1.3.0** · [Changelog](https://github.com/nicholaspsmith/menubar-barn/releases)
+
 ## Install
 
 ```sh
