@@ -8,6 +8,10 @@ without one is refused (`[no release]` in the tip commit is the only exception).
 Versions follow [Semantic Versioning](https://semver.org/). The full rule:
 [StatusItemKit — Releases](https://github.com/nicholaspsmith/StatusItemKit#releases-every-push-is-one).
 
+## [1.3.2] - 2026-09-29
+
+- Fixed: after the "No room to show …" alert, Barn's menu stayed open invisibly and swallowed every click, so Barn seemed frozen; the alert now waits until the menu has closed
+
 ## [1.3.1] - 2026-09-28
 
 - `install.sh` now asks whether to turn on Start at Login (skipped when it is already on, or when there is no terminal to ask in) instead of turning it on unasked, then relaunches the app, quitting any running copy first so the new build takes over

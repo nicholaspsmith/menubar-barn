@@ -890,7 +890,8 @@ final class App: NSObject, NSApplicationDelegate {
         // Showing needs room; hiding makes it. Check while the icons are hidden,
         // which is the layout the restored icon will actually have to fit into.
         if app.isHidden, isHidden, !AXHostedBar.isHosted, let refusal = roomRefusal(forShowing: app) {
-            report(refusal)
+            // Not from inside the menu's action: see afterMenuCloses.
+            afterMenuCloses { [weak self] in self?.report(refusal) }
             return
         }
         let wasHidden = isHidden
