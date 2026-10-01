@@ -20,7 +20,7 @@
 
 ---
 
-**Version 1.3.0** · [Changelog](https://github.com/nicholaspsmith/menubar-barn/releases)
+**Version 1.3.3** · [Changelog](https://github.com/nicholaspsmith/menubar-barn/releases)
 
 ## Install
 
@@ -38,7 +38,9 @@ menus contain.
 
 Then **⌘-drag the barn** so everything you want hidden sits to its left. Or let
 the app do the dragging: left-click it and untick whatever you would rather not
-see — every app is a row, ticked while its icon is out on the bar.
+see — every app is a row, ticked while its icon is out on the bar. On macOS 27
+the barn's « is always the leftmost icon showing: ⌘-drag an icon to its left and
+Barn puts it in the barn within a few seconds.
 
 Requires macOS 13+ and Swift 5.9; macOS 27 needs the Accessibility grant for
 hiding itself, not just for the menus (see below). Run only one menu-bar

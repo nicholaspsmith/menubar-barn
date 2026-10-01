@@ -291,7 +291,6 @@ private final class PanelRowView: NSView {
     private let app: PanelApp
     private weak var item: NSMenuItem?
     private let toggle: NSMenuItem
-    private var hot = false
     private var tickHot = false
 
     /// A row for an app out on the bar has no menu of its own to show and
@@ -316,7 +315,10 @@ private final class PanelRowView: NSView {
     // MARK: - Drawing
 
     override func draw(_ dirtyRect: NSRect) {
-        let highlighted = hot || item?.isHighlighted == true
+        // The menu's own highlight, not one tracked here: a menu drops
+        // mouse-exited events when the pointer moves fast or a submenu opens,
+        // and a row that kept its own flag stayed lit after the pointer left.
+        let highlighted = item?.isHighlighted == true
         if highlighted {
             NSColor.selectedContentBackgroundColor.setFill()
             NSBezierPath(roundedRect: bounds.insetBy(dx: 5, dy: 0), xRadius: 4, yRadius: 4).fill()
@@ -348,7 +350,7 @@ private final class PanelRowView: NSView {
             box.lineWidth = 1
             box.stroke()
         }
-        if tickHot, !ticked {
+        if tickHot, highlighted, !ticked {
             NSColor.tertiaryLabelColor.withAlphaComponent(0.25).setFill()
             box.fill()
         }
@@ -389,11 +391,10 @@ private final class PanelRowView: NSView {
         ))
     }
 
-    override func mouseEntered(with event: NSEvent) { hot = true; updateTickHot(event); needsDisplay = true }
+    override func mouseEntered(with event: NSEvent) { updateTickHot(event) }
     override func mouseMoved(with event: NSEvent) { updateTickHot(event) }
 
     override func mouseExited(with event: NSEvent) {
-        hot = false
         tickHot = false
         needsDisplay = true
     }

@@ -166,6 +166,13 @@ extension HostedBar {
         return .sound
     }
 
+    /// True for somebody's icon between the line and the handle. The handle
+    /// is the boundary the user sees: left of it means hidden, so an icon
+    /// dragged in there belongs in the barn, not on the bar.
+    public static func isIntruder(_ frame: ItemFrame, line: ItemFrame, handle: ItemFrame) -> Bool {
+        frame.minX >= line.maxX - 1 && frame.maxX <= handle.minX + 1
+    }
+
     /// True for a line the agent has *placed* while it is wide: a line is
     /// meant to be dropped or to sit under the frontmost app's menus, and
     /// one left anywhere else draws its whole width as empty bar.
