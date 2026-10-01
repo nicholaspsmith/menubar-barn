@@ -8,7 +8,12 @@
   Click the barn to get them back — with their real menus, without moving a thing.
 </p>
 
-<p align="center">Part of the <a href="https://widgets.nicksmith.software">Menubarn</a> widget library.</p>
+> [!WARNING]
+> **Sunset: Barn only works on macOS 26 and earlier.** macOS 27 moved every
+> status item into its own `MenuBarAgent`, which lays out the bar and collapses
+> the overflow itself, and Barn fights it: icons blink on and off. On macOS 27
+> and later, hide icons in **System Settings ▸ Menu Bar** instead, and don't run
+> Barn. It is no longer listed on the Menubarn site.
 
 <p align="center">
   <img src="docs/images/panel.png" width="260" alt="The panel: every menu-bar app, the ones in the barn with their menus, the ones still on the bar greyed">
@@ -38,12 +43,10 @@ menus contain.
 
 Then **⌘-drag the barn** so everything you want hidden sits to its left. Or let
 the app do the dragging: left-click it and untick whatever you would rather not
-see — every app is a row, ticked while its icon is out on the bar. On macOS 27
-the barn's « is always the leftmost icon showing: ⌘-drag an icon to its left and
-Barn puts it in the barn within a few seconds.
+see — every app is a row, ticked while its icon is out on the bar.
 
-Requires macOS 13+ and Swift 5.9; macOS 27 needs the Accessibility grant for
-hiding itself, not just for the menus (see below). Run only one menu-bar
+Requires macOS 13–26 and Swift 5.9. Not compatible with macOS 27 or later (see
+the note at the top). Run only one menu-bar
 manager at a time — two fighting over the same icons will strand one.
 
 ### Start at Login
@@ -109,7 +112,7 @@ So Barn moves an icon only when you ask it to, once, and always reads back
 where it landed. Anything resting somewhere invisible gets named in the menu
 rather than silently disappearing.
 
-### On macOS 27
+### On macOS 27 (why Barn is sunset)
 
 macOS 27 moved every status item into one system process, `MenuBarAgent`,
 which lays the whole bar out itself and collapses whatever does not fit into
@@ -144,7 +147,9 @@ menu bar itself (a regular app for a second, with a one-word menu) so the
 agent lays everything out and the drag lands where it is aimed, then hands
 focus back.
 
-Two things it cannot do. The agent's overflow has no off switch, so an app
+In the end the agent kept winning: Barn's resizing set off the agent's own
+re-layout, so icons blinked on and off, and the system « came back anyway.
+That is why Barn is sunset on macOS 27. Two things it could never do. The agent's overflow has no off switch, so an app
 with menus wider than about half the display leaves a band no item can
 cross without starting inside it; the « shows for that app and Barn says so
 in its log. And it needs Accessibility to know where its own lines end and
