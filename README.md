@@ -13,7 +13,7 @@
 > status item into its own `MenuBarAgent`, which lays out the bar and collapses
 > the overflow itself, and Barn fights it: icons blink on and off. On macOS 27
 > and later, hide icons in **System Settings ▸ Menu Bar** instead, and don't run
-> Barn. It is no longer listed on the Menubarn site.
+> Barn. It is no longer listed on the Menumon site.
 
 <p align="center">
   <img src="docs/images/panel.png" width="260" alt="The panel: every menu-bar app, the ones in the barn with their menus, the ones still on the bar greyed">
@@ -83,7 +83,7 @@ overflow, in Barn's colour — pointing left while the icons are in the barn
 and right while they are out. Prefer the barn itself? Right click ▸ Icon ▸
 Barn: doors shut while the icons are inside, open while its menu is up or the
 icons are out, drawn a little larger than a normal glyph on purpose, since the
-other Menubarn characters are supposed to have come out of it. The original
+other Menumon characters are supposed to have come out of it. The original
 single chevron is there too; the bar re-measures the handle's width on its own.
 
 A hidden app's submenu is its **real menu**, read live while its icon sits
