@@ -236,6 +236,7 @@ final class App: NSObject, NSApplicationDelegate {
         }
         if isHidden {
             hideLine()
+            evictIntruders()
         } else {
             // Ask the sibling apps for their slots *before* collapsing, so the
             // block has somewhere to land. Without this a reveal just slides the
@@ -450,20 +451,67 @@ final class App: NSObject, NSApplicationDelegate {
 
     // MARK: - The handle beside A
 
-    /// Barn's « should be the leftmost visible thing, where the agent's own
-    /// would be. If icons sit between A and the handle on launch, drag the
-    /// handle up against A once.
-    private func placeHandleBesideLine() {
+    /// The handle must sit right of A: left of it, it is hidden with the
+    /// block and takes the only control with it. Run on every settle.
+    private func placeHandleRightOfLine() {
         guard AXHostedBar.isHosted, let layout = AXHostedBar.layout(),
-              let a = ownLineSlot(in: layout), let handle = ownSlot(Self.handleIdentifier, in: layout)
+              let a = ownLineSlot(in: layout), let handle = ownSlot(Self.handleIdentifier, in: layout),
+              handle.frame.maxX <= a.frame.minX + 1
         else { return }
-        let between = layout.slots.filter { $0.frame.minX >= a.frame.maxX - 1 && $0.frame.maxX <= handle.frame.minX + 1 && $0.pid != ProcessInfo.processInfo.processIdentifier }
-        // Left of A the handle would be hidden along with the block — the one
-        // arrangement that takes the control away.
-        let leftOfLine = handle.frame.maxX <= a.frame.minX + 1
-        guard !between.isEmpty || leftOfLine else { return }
-        arrangeLog.notice("handle: \(between.count, privacy: .public) icon(s) between A and the handle (left of A: \(leftOfLine, privacy: .public)); moving the handle beside A")
+        arrangeLog.notice("handle: left of A; moving the handle beside A")
         Arranger.dragOwn(fromX: handle.frame.minX + handle.frame.width / 2, toX: a.frame.maxX + 4)
+    }
+
+    /// Somebody's icons between A and the handle — dragged there by hand,
+    /// usually past the red «, which says "hide this".
+    private func intruders(in layout: HostedLayout) -> [HostedSlot] {
+        guard let a = ownLineSlot(in: layout), let handle = ownSlot(Self.handleIdentifier, in: layout) else { return [] }
+        let ownPID = ProcessInfo.processInfo.processIdentifier
+        return layout.slots.filter {
+            $0.pid != ownPID && HostedBar.isIntruder($0.frame, line: a.frame, handle: handle.frame)
+        }
+    }
+
+    /// Evictions spent against an icon that would not leave, reset the
+    /// moment the gap is clear.
+    private var evictions = 0
+    private static let evictionLimit = 3
+
+    /// Barn's « is the leftmost visible thing, where the agent's own would
+    /// be, and everything left of it is in the barn. An icon between the
+    /// line and the handle breaks that: it shows, yet sits on the hidden
+    /// side of the «. So on every poll while hidden, drop it into A's left
+    /// half, which puts it left of the line and off the bar.
+    ///
+    /// Done while hidden, not by revealing: then A is wide and its left half
+    /// is open bar, clear of the band the agent covers with its «. Measured
+    /// 2026-09-28 with iTerm2 in front: into A's left half at +32pt it went,
+    /// at +6pt (inside the slot's padding) nothing moved, and dragging A up
+    /// to the handle during a reveal never moved at all — the agent had it
+    /// stacked, and borrowing the bar from a poll is refused because Barn
+    /// cannot activate itself without a click.
+    ///
+    /// Not while the user is dragging, nor with a menu open or an arrange
+    /// under way — the bar is mid-move then, and the next poll will see
+    /// where it settled.
+    private func evictIntruders() {
+        guard AXHostedBar.isHosted, isHidden, hasSettled, !panelOpen, lentBy == nil,
+              // Mid-read-back A's width is still in play; drop into it once it holds.
+              hostedHide?.verified == true,
+              NSEvent.pressedMouseButtons == 0,
+              CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: .leftMouseUp) > 1,
+              let layout = AXHostedBar.layout(),
+              let a = ownLineSlot(in: layout)?.frame,
+              let intruder = intruders(in: layout).first
+        else { evictions = 0; return }
+        // A narrow A has no open half to drop into; the hide will widen it.
+        let dropX = a.minX + max(HostedBar.slotPadding * 2, a.width / 4)
+        guard evictions < Self.evictionLimit, dropX < a.minX + a.width / 2 else { return }
+        evictions += 1
+        let name = NSRunningApplication(processIdentifier: intruder.pid)?.localizedName ?? "pid \(intruder.pid)"
+        arrangeLog.notice("evict: \(name, privacy: .public) is left of the handle; dropping it at x=\(Int(dropX), privacy: .public), into the barn (attempt \(self.evictions, privacy: .public))")
+        Arranger.dragOwn(fromX: intruder.frame.minX + intruder.frame.width / 2, toX: dropX)
+        refreshSnapshotsOnceSettled()
     }
 
     /// Re-settles when our own three items are no longer in the only order
@@ -481,7 +529,7 @@ final class App: NSObject, NSApplicationDelegate {
     ///
     /// So check the order, and when it is wrong do what a launch does: go
     /// narrow, let the agent place everything again, and drag B and the
-    /// handle back beside A. `placeHandleBesideLine` cannot do it alone —
+    /// handle back beside A. `placeHandleRightOfLine` cannot do it alone —
     /// it drags the handle from where it sits, and an item with no slot has
     /// nowhere to drag from.
     ///
@@ -549,7 +597,7 @@ final class App: NSObject, NSApplicationDelegate {
         showLine()
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.settleDelay) { [weak self] in
             guard let self else { return }
-            self.placeHandleBesideLine()
+            self.placeHandleRightOfLine()
             self.placeSecondLine()
             self.hasSettled = true
             self.applyState()

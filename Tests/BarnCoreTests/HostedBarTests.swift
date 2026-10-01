@@ -134,3 +134,27 @@ final class HostedSplitTests: XCTestCase {
         XCTAssertFalse(HostedBar.needsCollapse(lineRightEdge: 700, boundary: 562))
     }
 }
+
+/// Anything between the line and the handle is on the wrong side of Barn's «:
+/// it shows, yet sits where the user put hidden things. Measured 2026-09-28:
+/// Tailscale ⌘-dragged to x=1028 with A ending at 1028 and the handle at 1066.
+final class IntruderTests: XCTestCase {
+    private let a = ItemFrame(minX: 1011, width: 17)
+    private let handle = ItemFrame(minX: 1066, width: 16)
+
+    func testIconBetweenLineAndHandleIsAnIntruder() {
+        XCTAssertTrue(HostedBar.isIntruder(ItemFrame(minX: 1028, width: 38), line: a, handle: handle))
+    }
+
+    func testIconsEitherSideAreNot() {
+        XCTAssertFalse(HostedBar.isIntruder(ItemFrame(minX: 978, width: 16), line: a, handle: handle))
+        XCTAssertFalse(HostedBar.isIntruder(ItemFrame(minX: 1082, width: 40), line: a, handle: handle))
+    }
+
+    func testTouchingNeighboursAreNot() {
+        // Slots abut exactly; a point of rounding must not count as between.
+        let snug = ItemFrame(minX: 1028, width: 16)
+        XCTAssertFalse(HostedBar.isIntruder(ItemFrame(minX: 995, width: 16), line: a, handle: snug))
+        XCTAssertFalse(HostedBar.isIntruder(ItemFrame(minX: 1044, width: 16), line: a, handle: snug))
+    }
+}

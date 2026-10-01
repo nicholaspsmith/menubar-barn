@@ -8,6 +8,11 @@ without one is refused (`[no release]` in the tip commit is the only exception).
 Versions follow [Semantic Versioning](https://semver.org/). The full rule:
 [StatusItemKit — Releases](https://github.com/nicholaspsmith/StatusItemKit#releases-every-push-is-one).
 
+## [1.3.3] - 2026-10-01
+
+- On macOS 27, an icon ⌘-dragged left of the barn's « goes into the barn instead of staying on the bar, so the « is always the leftmost icon showing. Launch no longer moves the « left to make room for such an icon.
+- Rows in the panel no longer stay highlighted after the pointer has left them
+
 ## [1.3.2] - 2026-09-29
 
 - Fixed: after the "No room to show …" alert, Barn's menu stayed open invisibly and swallowed every click, so Barn seemed frozen; the alert now waits until the menu has closed
