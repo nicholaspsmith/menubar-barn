@@ -8,6 +8,10 @@ without one is refused (`[no release]` in the tip commit is the only exception).
 Versions follow [Semantic Versioning](https://semver.org/). The full rule:
 [StatusItemKit — Releases](https://github.com/nicholaspsmith/StatusItemKit#releases-every-push-is-one).
 
+## [1.4.0] - 2026-10-01
+
+- On macOS 27 and later Barn posts a notification that it isn't needed (System Settings ▸ Menu Bar hides icons now), turns off its Start at Login, and quits
+
 ## [1.3.3] - 2026-10-01
 
 - On macOS 27, an icon ⌘-dragged left of the barn's « goes into the barn instead of staying on the bar, so the « is always the leftmost icon showing. Launch no longer moves the « left to make room for such an icon.
