@@ -5,6 +5,7 @@
 // Copyright (c) 2026 Nicholas Smith
 
 import AppKit
+import UserNotifications
 import BarnCore
 import OSLog
 import StatusItemKit
@@ -81,7 +82,33 @@ final class App: NSObject, NSApplicationDelegate {
         "NSStatusItem Preferred Position BarnHandle": 590,
     ]
 
+    /// Tell the user Barn isn't needed on this macOS, stop it starting at login,
+    /// and quit. The notification is posted once authorization is settled; the
+    /// app quits either way, so it never sits in the bar.
+    static func retireOnMacOS27() {
+        try? LoginItem.setEnabled(false)
+        let center = UNUserNotificationCenter.current()
+        center.requestAuthorization(options: [.alert]) { _, _ in
+            let content = UNMutableNotificationContent()
+            content.title = "Barn isn't needed on macOS 27"
+            content.body = "macOS now hides menu-bar icons itself: System Settings ▸ Menu Bar. Barn has quit and won't start at login."
+            let request = UNNotificationRequest(identifier: "barn-macos27", content: content, trigger: nil)
+            center.add(request) { _ in
+                DispatchQueue.main.async { NSApp.terminate(nil) }
+            }
+        }
+        // The first launch asks permission to notify; give the user a minute to
+        // answer (Barn shows no icon meanwhile), then leave regardless.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 60) { NSApp.terminate(nil) }
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // macOS 27 lays the menu bar out itself (System Settings ▸ Menu Bar hides
+        // icons) and Barn only fights it, so on 27 and later it says so and quits.
+        if ProcessInfo.processInfo.operatingSystemVersion.majorVersion >= 27 {
+            Self.retireOnMacOS27()
+            return
+        }
         Self.migrateFromCurtain()
         // Seed positions before the items exist — macOS reads these when an item
         // is created, and never again.

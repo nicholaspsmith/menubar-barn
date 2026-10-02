@@ -13,7 +13,8 @@
 > status item into its own `MenuBarAgent`, which lays out the bar and collapses
 > the overflow itself, and Barn fights it: icons blink on and off. On macOS 27
 > and later, hide icons in **System Settings ▸ Menu Bar** instead, and don't run
-> Barn. It is no longer listed on the Menumon site.
+> Barn. It is no longer listed on the Menumon site. Launched on macOS 27 or later,
+> Barn says so in a notification, turns off its Start at Login, and quits.
 
 <p align="center">
   <img src="docs/images/panel.png" width="260" alt="The panel: every menu-bar app, the ones in the barn with their menus, the ones still on the bar greyed">
@@ -25,7 +26,7 @@
 
 ---
 
-**Version 1.3.3** · [Changelog](https://github.com/nicholaspsmith/menubar-barn/releases)
+**Version 1.4.0** · [Changelog](https://github.com/nicholaspsmith/menubar-barn/releases)
 
 ## Install
 
