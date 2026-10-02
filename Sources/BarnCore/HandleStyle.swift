@@ -13,7 +13,7 @@ public enum HandleStyle: String, CaseIterable, Sendable {
     /// so its control sits where the user has learned to look for one.
     case doubleChevron
     /// A barn whose doors are shut while the icons are hidden and open
-    /// while the icons are revealed. What the Menubarn library is named for.
+    /// while the icons are revealed. The barn the suite was first named for.
     case barn
     /// The original chevron, pointing the way the icons will go.
     case chevron
