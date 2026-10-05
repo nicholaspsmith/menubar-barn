@@ -9,12 +9,11 @@
 </p>
 
 > [!WARNING]
-> **Sunset: Barn only works on macOS 26 and earlier.** macOS 27 moved every
-> status item into its own `MenuBarAgent`, which lays out the bar and collapses
-> the overflow itself, and Barn fights it: icons blink on and off. On macOS 27
-> and later, hide icons in **System Settings ▸ Menu Bar** instead, and don't run
-> Barn. It is no longer listed on the Menumon site. Launched on macOS 27 or later,
-> Barn says so in a notification, turns off its Start at Login, and quits.
+> **Barn works only on macOS 26 and earlier.** On macOS 27 the system's
+> `MenuBarAgent` lays out the bar and collapses the overflow itself, and Barn
+> fights it. Hide icons in **System Settings ▸ Menu Bar** instead. Launched on
+> macOS 27 or later, Barn posts a notification, turns off its Start at Login,
+> and quits.
 
 <p align="center">
   <img src="docs/images/panel.png" width="260" alt="The panel: every menu-bar app, the ones in the barn with their menus, the ones still on the bar greyed">
@@ -38,17 +37,23 @@ git clone https://github.com/nicholaspsmith/menubar-barn.git
 cd menubar-barn && ./install.sh
 ```
 
-That builds it, drops it in `~/Applications`, and launches it. Grant Accessibility
-when prompted — it is how Barn reads where icons sit and what hidden apps'
-menus contain.
+`install.sh` builds `Barn.app` (`scripts/build-app.sh`, which runs
+StatusItemKit's `make-app.sh`), symlinks it into `~/Applications`, offers to
+turn on Start at Login, and launches it, quitting any running copy first.
+StatusItemKit and HotkeyKit must be checked out beside this repo: `Package.swift`
+refers to them by path. Grant Accessibility when prompted; Barn uses it to read
+where icons sit and what hidden apps' menus contain.
 
-Then **⌘-drag the barn** so everything you want hidden sits to its left. Or let
-the app do the dragging: left-click it and untick whatever you would rather not
-see — every app is a row, ticked while its icon is out on the bar.
+Then **⌘-drag the barn** so everything you want hidden sits to its left, or
+left-click it and untick whatever you would rather not see: every app is a
+row, ticked while its icon is out on the bar.
 
-Requires macOS 13–26 and Swift 5.9. Not compatible with macOS 27 or later (see
-the note at the top). Run only one menu-bar
-manager at a time — two fighting over the same icons will strand one.
+Requires macOS 13–26 and Swift 5.9. Run only one menu-bar manager at a time;
+two fighting over the same icons will strand one.
+
+Settings from the app's earlier name, Curtain (`com.nicholaspsmith.Curtain`),
+are copied across on first launch; Accessibility must be granted again, since
+macOS keys it to the bundle id (`com.nicholaspsmith.Barn`).
 
 ### Start at Login
 
@@ -58,161 +63,129 @@ Toggle it from the menu, or from the shell:
 "$HOME/Applications/Barn.app/Contents/MacOS/Barn" --login on       # or: off, status
 ```
 
-`install.sh` asks to run this for you (when run in a terminal). Start at Login is `SMAppService.mainApp`, which can only
-register the calling process's own bundle — so nothing outside the app can turn
-it on, and the command has to be the *installed* binary. A bare `--login`, or
-`--login status`, only reports the current state and changes nothing.
+Start at Login is `SMAppService.mainApp`, which can register only the calling
+process's own bundle, so the command must run the *installed* binary. A bare
+`--login`, or `--login status`, only reports the current state.
 
 ## Using it
 
 | | |
 |---|---|
-| **Left click** | every menu-bar app, each with a tick of its own: click the tick to move that icon across the line, click the name for whatever the row does — the live menu of an app in the barn, or the app itself where it publishes none |
-| **Right click** | Panel Order (drag the list into any order; A–Z until you do), reveal behaviour, Icon (double chevron, barn or chevron), Start at Login, Quit |
+| **Left click** | The panel: every menu-bar app, each with its own tick. Click the tick to move that icon across the line; click the name for the live menu of an app in the barn, or to open an app that publishes no menu. |
+| **Right click** | Panel Order… (drag the list into any order; A–Z until you do), When Showing (click to hide again, or hide automatically), Icon (double chevron, barn or chevron), Start at Login, Version, Quit. |
 
-A warning at the top of the right-click menu — an icon cut off at the screen
-edge, lost in the notch, or stacked on the system « — is also its fix: click
-it and Barn tucks the icon in, or re-settles the barn when the icon is already
-in the block and merely not pushed far enough.
+A warning at the top of the right-click menu (an icon cut off at the screen
+edge or lost in the notch) is also its fix: click it and Barn tucks the icon
+in, or re-settles the barn when the icon is already in the block but not
+pushed far enough. Without Accessibility, the warning is "Grant
+Accessibility…".
 
 ## The menu-bar icon
 
 ![The menu-bar icon](docs/menubar-icon.png)
 
-The control is a double chevron in barn red — the « macOS 27 shows for its own
-overflow, in Barn's colour — pointing left while the icons are in the barn
-and right while they are out. Prefer the barn itself? Right click ▸ Icon ▸
-Barn: doors shut while the icons are inside, open while its menu is up or the
-icons are out, drawn a little larger than a normal glyph on purpose, since the
-other Menumon characters are supposed to have come out of it. The original
-single chevron is there too; the bar re-measures the handle's width on its own.
+The handle is a double chevron in barn red by default, pointing left while the
+icons are in the barn and right while they are out. Right click ▸ Icon offers
+two others: a barn whose doors are shut while the icons are hidden and open
+while they are out, and a single chevron. The bar re-measures the handle's
+width when it changes.
 
-A hidden app's submenu is its **real menu**, read live while its icon sits
-off-screen — so a hidden app stays completely usable and nothing on your bar
-moves. Apps that publish no menu open directly instead; an app that only
-answers a real click (BetterDisplay) gets one: Barn reveals the bar, clicks
-its icon for you, and hides again when its menu closes. Hide an icon and unhide
-it later and it returns to the exact slot it left.
+A hidden app's submenu is its **real menu**, read live through Accessibility
+while its icon sits off-screen, so a hidden app stays usable and nothing on
+the bar moves. Apps that publish no menu open directly instead. An app that
+only answers a real click (BetterDisplay) gets one: Barn reveals the bar,
+clicks the icon, and hides again when its menu closes. An icon that is hidden
+and later shown returns to the slot it left.
 
-## Why it cannot lose an icon
+## How it works
 
-Barn hides by **width**. A status item of its own grows leftward, sliding its
-neighbours off the display. Items to its right never move, and no other app's
-state is written.
+Barn hides by **width**. It owns two status items: a narrow handle, and a
+line that grows leftward, sliding its neighbours off the display. Items to
+its right never move, and no other app's state is written. (Two items because
+macOS renders a status item only when its slot fits entirely right of the
+notch, so the wide line is always invisible and the control must be separate.)
 
-That matters because the usual approach — Ice's, for one — is to *move* other
-apps' icons, and moving is where they get lost. This project exists because an
-icon vanished: the app was healthy, its item present, the accessibility API
-reporting a real 32×24 slot — but the slot sat nine points from the notch, and
-that sliver renders nothing. Ice had dragged it there and never checked, and
-quitting Ice made the same mistake in reverse, restoring three icons straight
-into the notch, all invisible. Barn cannot do either, because it never moves
-an icon it did not just ask you about.
+Barn moves another app's icon only when you ask it to, once, and always reads
+back where it landed. Anything resting somewhere invisible is named in the
+menu rather than silently disappearing.
 
-So Barn moves an icon only when you ask it to, once, and always reads back
-where it landed. Anything resting somewhere invisible gets named in the menu
-rather than silently disappearing.
+While Barn reveals hidden icons, every StatusItemKit app that runs a
+`YieldClient` hides its own item briefly to free room (`MenuBarYield` in
+StatusItemKit). The request carries a TTL, so a crashed Barn cannot leave
+those icons hidden.
 
-### On macOS 27 (why Barn is sunset)
-
-macOS 27 moved every status item into one system process, `MenuBarAgent`,
-which lays the whole bar out itself and collapses whatever does not fit into
-a « of its own. Barn stands in for that «.
-
-The agent sorts each trailing item by where its left edge would land. Past
-the frontmost app's last menu it is placed; below the app's *name* (plus a
-margin) it is dropped from the bar outright; in between it is an overflow
-member, and that is when the agent shows its «. An item wider than half the
-display is dropped wherever it sits — which is what happened to Barn's old
-2000pt line.
-
-So Barn now runs **two lines**, side by side. The right one is sized to end
-just past the frontmost app's menus; the left one reaches down below the
-app's name. Everything left of them is dropped, the left line is dropped with
-it, and the right one sits clear of the band — no « anywhere. The split
-follows the frontmost app: switch from Finder to Xcode and the lines
-re-divide (two length changes, nothing moves), and Barn reads the agent's
-layout back after each change and nudges if a « slipped in.
-
-The handle is drawn as the agent's own « in barn red, so the bar looks the
-way macOS taught you to expect, and the icons behind it open from Barn's
-panel with their live menus instead of the system's.
-
-When the bar is genuinely full for the app in front — its menus reach past
-where the visible icons start — Barn does what the agent would: it hides
-the leftmost visible icon, into the barn, and checks again. That is a real
-hide, like unticking it in the panel, and it stays hidden until you
-tick it back; putting it back on every app switch would need a reveal each
-time. To move an icon while the bar is that full, Barn briefly takes the
-menu bar itself (a regular app for a second, with a one-word menu) so the
-agent lays everything out and the drag lands where it is aimed, then hands
-focus back.
-
-In the end the agent kept winning: Barn's resizing set off the agent's own
-re-layout, so icons blinked on and off, and the system « came back anyway.
-That is why Barn is sunset on macOS 27. Two things it could never do. The agent's overflow has no off switch, so an app
-with menus wider than about half the display leaves a band no item can
-cross without starting inside it; the « shows for that app and Barn says so
-in its log. And it needs Accessibility to know where its own lines end and
-where the frontmost app's menus do; without the grant it falls back to
-guesses that usually hold.
+The source keeps the macOS 27 code paths (`AXHostedBar`, `HostedBar`, a
+second line), though Barn now quits at launch there. Design notes, including
+the measurements behind every constant, are in `docs/superpowers/`.
 
 ## Known limits
 
-- **The bar has a capacity.** Making an app visible when the strip is already full
-  pushes something into the notch sliver, where it draws nothing — and on a full
-  bar the leftmost thing is Barn's own handle, the control you would use to
-  fix it. So Barn refuses to show an icon when the arithmetic says it will not
-  fit, and tells you how many points to free by hiding something else first. If
-  macOS reflows the bar unexpectedly and the handle is stranded anyway, Barn
-  notices within a second and offers to hide the icon again. It still cannot
-  create room.
+- **The bar has a capacity.** Showing an app when the strip is already full
+  pushes something into the notch sliver, where it draws nothing, and on a
+  full bar the leftmost item is Barn's own handle. So Barn refuses to show an
+  icon that will not fit and says how many points to free by hiding something
+  else first. If macOS reflows the bar and strands the handle anyway, Barn
+  notices within a second and offers to hide the icon again. It cannot create
+  room.
 - **A very wide hidden block cannot all be revealed at once.** Showing an icon
   means revealing the block and dragging that icon across the line, and the
-  block's far end can spill under the notch if more is hidden than the bar can
-  display. During the move Barn's own handle and every StatusItemKit app
-  that runs a `YieldClient` give up their width, which is usually enough; if
-  the icon still sits under the notch, Barn says so rather than dragging
-  blind. Moving other hidden icons across the line does not help — the total
-  width left of the handle is unchanged — so the cure is fewer or narrower
-  icons on the bar, or more apps that yield.
-- **Some apps are invisible to accessibility.** Mullvad and Raycast publish no
-  status item at all, so they can be hidden but not listed or arranged for.
+  block's far end can spill under the notch. During the move Barn's handle
+  and every app with a `YieldClient` give up their width, which is usually
+  enough; if the icon still sits under the notch, Barn says so rather than
+  dragging blind. Moving other hidden icons across the line does not help,
+  since the total width left of the handle is unchanged; the cure is fewer or
+  narrower icons on the bar, or more apps that yield.
+- **Some apps are invisible to Accessibility.** Mullvad and Raycast publish no
+  status item there, so they can be hidden but not listed or arranged.
 - **Shortcuts depend on the app.** Rows show key equivalents where an app sets
-  them; Rectangle registers global hotkeys instead, so it publishes none.
+  them; an app that registers global hotkeys instead (Rectangle) shows none.
 - **Main display only.**
-- **On macOS 27, positions live with the agent.** `NSStatusItem Preferred
-  Position` is honoured only for a brand-new item, so `snapshot-positions.sh`
-  captures nothing useful there; ⌘-drag is the way to rearrange.
 
-## Design notes
+## Development
 
-`docs/superpowers/` carries the design and the plan, including the measurements
-behind every constant — why a status item must fit entirely right of the notch to
-render at all, why an app cannot trust its own item's window frame, and why
-yielding by width rather than `isVisible` is the only way to keep a placement.
+```sh
+swift build
+swift test                     # BarnCore: geometry, placement, panel order, yield sessions, …
+scripts/build-app.sh           # build/Barn.app
+```
+
+- `scripts/verify-menubar.sh` reports the whole menu bar and names anything
+  stranded, and warns if Ice is also running (needs Accessibility for the
+  terminal).
+- `scripts/snapshot-positions.sh [output]` saves every app's
+  `NSStatusItem Preferred Position` and writes a script that restores them;
+  run it before rearranging.
+- Logs: `log show --predicate 'subsystem == "com.nicholaspsmith.Barn"'`.
 
 ## Why not a SwiftBar plugin?
 
-This is a standalone `.app` built on [StatusItemKit](https://github.com/nicholaspsmith/StatusItemKit), not a script under a plugin host: no SwiftBar to install, a real AppKit menu instead of rendered stdout, event-driven updates instead of a re-run timer, and an icon that keeps its place in the bar. Managing other apps' status items by width needs a live AppKit process, not a script that is re-run every few seconds. The full comparison is in [StatusItemKit's README](https://github.com/nicholaspsmith/StatusItemKit#why-not-swiftbar).
+Barn is a standalone `.app` built on
+[StatusItemKit](https://github.com/nicholaspsmith/StatusItemKit), not a script
+under a plugin host. Managing other apps' status items by width needs a live
+AppKit process, not a script re-run every few seconds. The full comparison is
+in [StatusItemKit's README](https://github.com/nicholaspsmith/StatusItemKit#why-not-swiftbar).
 
 ## The menu-bar suite
 
-Part of a suite of macOS menu-bar apps that share one framework, one
-build-and-sign script, and one installer. They are designed to sit in the
-same bar together: consistent menus, a common **Icon** picker for shape and
-colour, and cooperative hiding so no icon strands another.
+Part of Menumon, a suite of macOS menu-bar apps that share one framework, one
+build-and-sign script and one installer. They sit in the same bar together,
+with consistent menus, a common **Icon** picker for shape and colour, and
+cooperative hiding so no icon strands another.
 
 | App | What it does |
 |---|---|
 | [Claude Usage](https://github.com/nicholaspsmith/claude-usage-menubar) | Claude Code plan limits, resets, and live agent sessions |
 | [Apollo Monitor](https://github.com/nicholaspsmith/apollo-monitor-menubar) | Apollo audio-interface monitor level, plus a mixer-process watchdog |
 | [Battery Time](https://github.com/nicholaspsmith/battery-time-menubar) | Time remaining, power mode, and 24h usage |
-| [VPN & DNS](https://github.com/nicholaspsmith/vpn-dns-menubar) | A chameleon for Mullvad + Tailscale state, with a DNS watcher |
+| [VPN & DNS](https://github.com/nicholaspsmith/vpn-dns-menubar) | An iguana for Mullvad + Tailscale state, with a DNS watcher |
 | [Mac Daddy](https://github.com/nicholaspsmith/mac-daddy-menubar) | Kills media trackers, trashes stale downloads, reaps hung processes, and sweats as your process count climbs |
 | [KeyLight](https://github.com/nicholaspsmith/keylight-menubar) | Ctrl+brightness keys remapped to keyboard backlight |
+| [Monitor Lizard](https://github.com/nicholaspsmith/monitor-lizard-menubar) | External-monitor brightness, contrast and resolution, Night Shift, and the built-in screen from dimmer than macOS allows to XDR |
+| [Homestead](https://github.com/nicholaspsmith/home-assistant-menubar) | Home Assistant dashboards and device controls in the menu |
+| [SoundChain](https://github.com/nicholaspsmith/soundchain-menubar) | One chain of Audio Unit effects over all system audio |
+| [Menu Crane](https://github.com/nicholaspsmith/menu-crane) | A ⌘Space launcher for apps, arithmetic, unit conversions and emoji |
 | [MacRecorder](https://github.com/nicholaspsmith/MacRecorder) | Screen recording with system audio |
-| **Barn** | Hides a block of status icons by width, so it cannot strand one |
+| **Barn** | macOS 26 and earlier only: hides a block of status icons by width (on macOS 27, use System Settings ▸ Menu Bar) |
 
 | Framework | |
 |---|---|
@@ -242,7 +215,9 @@ a release titled `vX.Y.Z`. Without a new version:
 The one exception is `[no release]` in the tip commit's message, for changes
 nothing a user runs (setup, CI, developer docs): it passes every check with no
 version bump and no tag. Never tag or create a release by hand, and never
-`gh pr merge --admin` past a failing check — fix the PR. After merging, `git pull` for the tag and rebuild. `install.sh` re-arms the hook on a fresh clone.
+`gh pr merge --admin` past a failing check — fix the PR. After merging,
+`git pull` for the tag and rebuild. `install.sh` re-arms the hook on a fresh
+clone.
 See [StatusItemKit — Releases](https://github.com/nicholaspsmith/StatusItemKit#releases-every-push-is-one) for the whole rule.
 
 ## License
