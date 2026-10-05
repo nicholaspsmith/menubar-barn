@@ -157,14 +157,6 @@ scripts/build-app.sh           # build/Barn.app
   run it before rearranging.
 - Logs: `log show --predicate 'subsystem == "com.nicholaspsmith.Barn"'`.
 
-## Why not a SwiftBar plugin?
-
-Barn is a standalone `.app` built on
-[StatusItemKit](https://github.com/nicholaspsmith/StatusItemKit), not a script
-under a plugin host. Managing other apps' status items by width needs a live
-AppKit process, not a script re-run every few seconds. The full comparison is
-in [StatusItemKit's README](https://github.com/nicholaspsmith/StatusItemKit#why-not-swiftbar).
-
 ## The menu-bar suite
 
 Part of Menumon, a suite of macOS menu-bar apps that share one framework, one
